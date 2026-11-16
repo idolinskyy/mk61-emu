@@ -39,7 +39,7 @@ sudo apt install ./mk61emu_1.0.0_amd64.deb
 
 ## Console
 
-With no arguments you get `МК-61 [АВТ | PC=00]>`. Keys are typed separated by spaces. Emulator commands start with `:`.
+With no arguments you get `МК-61 [АВТ | PC=00]>`. Nothing happens on a bare keypress: type the key names separated by spaces and press Enter. Commands for the program itself start with `:`. `:keys` lists every key and the word to type, `:help` is the longer guide.
 
 ```text
 2 В↑ 3 +
@@ -61,4 +61,4 @@ mk61emu --preset quadratic --reg 1=1 --reg 2=-5 --reg 3=6 --run
 
 ## Window
 
-The face matches the MK-61. `F12` leaves only the calculator. `F10` steps, `F5` runs with a delay, `F9` toggles a breakpoint. Sample programs and your own listing live on the editor tab. The calculator manual is the «Інструкція МК-61» tab. The **Про** button by the display is the version and the license notes.
+The face matches the MK-61. A click presses the key at once, and so does the PC keyboard (Enter is `В↑`, space is `С/П`, F and K are the prefixes), unless the cursor is in the program editor. Hover a key for what it does. `F12` leaves only the calculator, `F10` steps, `F5` runs with a delay, `F9` toggles a breakpoint. The «Інструкція МК-61» tab is the full key guide. The **Про** button by the display is the version and the license notes.
