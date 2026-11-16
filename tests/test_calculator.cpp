@@ -40,20 +40,24 @@ TEST_CASE("RPN stack, number entry, and T register duplication on drop", "[stack
   REQUIRE(calc.reg_z() == Approx(10.0));
   REQUIRE(calc.reg_t() == Approx(10.0));
 
-  // Перевіримо, що В↑ перед П→Х не піднімає стек двічі
+  // В↑ вимикає автопідняття для наступної цифри, але П→Х стек піднімає все одно.
+  // 2 В↑ залишає Y=2, X=2. П→Х 0 піднімає ще раз, X стає 5, додавання дає 7, Y лишається 2.
   calc.clear_registers();
   calc.set_memory_reg(0, 5.0);
   REQUIRE(calc.press_tokens("2 В↑ П→Х 0 +", err));
   REQUIRE(calc.reg_x() == Approx(7.0));
+  REQUIRE(calc.reg_y() == Approx(2.0));
 }
 
 TEST_CASE("Scientific functions, x^y order, and angle modes", "[math]") {
   Calculator calc;
   std::string err;
 
-  // На МК-61 для F x^y основа знаходиться у Y, а показник у X: 2 В↑ 10 F x^y = 1024
-  REQUIRE(calc.press_tokens("2 В↑ 10 F ↔", err));
+  // На МК-61 F x^y — це X^Y, стек не опускається: 10 В↑ 2 F x^y дає 2^10, Y лишається 10
+  REQUIRE(calc.press_tokens("10 В↑ 2 F ↔", err));
   REQUIRE(calc.reg_x() == Approx(1024.0));
+  REQUIRE(calc.reg_y() == Approx(10.0));
+  REQUIRE(calc.reg_x1() == Approx(2.0));
 
   // Градуси (ГРД): sin(30°) = 0.5, cos(60°) = 0.5
   calc.reset();
@@ -102,6 +106,75 @@ TEST_CASE("K-prefix functions: max without stack drop, HMS conversions, bitwise 
   // Порозрядна інверсія К инв (К Сх): 123456 -> " 8.ГCL-9  "
   REQUIRE(calc.press_tokens("123456 К Сх", err));
   REQUIRE(calc.display().text == " 8.ГCL-9  ");
+}
+
+TEST_CASE("Stack matches the real MK-61 for swap, rotate, pi, power, sign and logic", "[stack]") {
+  Calculator calc;
+  std::string err;
+
+  REQUIRE(calc.press_tokens("1 В↑ 2 В↑ 3 В↑ 4 <->", err));
+  REQUIRE(calc.reg_x() == Approx(3.0));
+  REQUIRE(calc.reg_y() == Approx(4.0));
+  REQUIRE(calc.reg_z() == Approx(2.0));
+  REQUIRE(calc.reg_t() == Approx(1.0));
+  REQUIRE(calc.reg_x1() == Approx(4.0));
+
+  calc.reset();
+  REQUIRE(calc.press_tokens("1 В↑ 2 В↑ 3 В↑ 4 F В↑", err));
+  REQUIRE(calc.reg_x() == Approx(3.0));
+  REQUIRE(calc.reg_y() == Approx(2.0));
+  REQUIRE(calc.reg_z() == Approx(1.0));
+  REQUIRE(calc.reg_t() == Approx(4.0));
+  REQUIRE(calc.reg_x1() == Approx(4.0));
+
+  calc.reset();
+  REQUIRE(calc.press_tokens("4 В↑ F .", err));
+  REQUIRE(calc.reg_x() == Approx(3.1415926));
+  REQUIRE(calc.reg_y() == Approx(4.0));
+  REQUIRE(calc.reg_z() == Approx(4.0));
+  REQUIRE(calc.reg_x1() == Approx(4.0));
+
+  calc.reset();
+  REQUIRE(calc.press_tokens("5 В↑ /-/ 2", err));
+  REQUIRE(calc.reg_x() == Approx(2.0));
+  REQUIRE(calc.reg_y() == Approx(5.0));
+
+  calc.reset();
+  REQUIRE(calc.press_tokens("1 В↑ 2 В↑ 12 В↑ 5 К .", err));
+  REQUIRE(calc.reg_y() == Approx(12.0));
+  REQUIRE(calc.reg_z() == Approx(2.0));
+  REQUIRE(calc.reg_t() == Approx(1.0));
+  REQUIRE(calc.reg_x1() == Approx(5.0));
+}
+
+TEST_CASE("K SCH replaces X, keeps Y Z T, and arms the next digit lift", "[k_ops]") {
+  Calculator calc;
+  std::string err;
+
+  REQUIRE(calc.press_tokens("10 В↑ 20 В↑ 30 В↑ 40", err));
+  calc.press_key(Key::K);
+  calc.press_key(Key::Enter);
+
+  REQUIRE(calc.reg_x() == Approx(0.404067));
+  REQUIRE(calc.reg_x1() == Approx(40.0));
+  REQUIRE(calc.reg_y() == Approx(30.0));
+  REQUIRE(calc.reg_z() == Approx(20.0));
+  REQUIRE(calc.reg_t() == Approx(10.0));
+
+  const double first = calc.reg_x();
+  calc.press_key(Key::K);
+  calc.press_key(Key::Enter);
+  REQUIRE(calc.reg_x1() == Approx(first));
+  REQUIRE(calc.reg_y() == Approx(30.0));
+  REQUIRE(calc.reg_z() == Approx(20.0));
+  REQUIRE(calc.reg_t() == Approx(10.0));
+
+  const double second = calc.reg_x();
+  calc.press_key(Key::D7);
+  REQUIRE(calc.reg_x() == Approx(7.0));
+  REQUIRE(calc.reg_y() == Approx(second));
+  REQUIRE(calc.reg_z() == Approx(30.0));
+  REQUIRE(calc.reg_t() == Approx(20.0));
 }
 
 TEST_CASE("Indirect addressing auto-decrement (R0..R3) and auto-increment (R4..R6)", "[indirect]") {

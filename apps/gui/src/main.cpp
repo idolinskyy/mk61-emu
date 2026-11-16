@@ -25,9 +25,11 @@
 #include <QPushButton>
 #include <QRadioButton>
 #include <QScreen>
+#include <QSizePolicy>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QString>
+#include <QTabBar>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -38,7 +40,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <set>
@@ -57,6 +61,84 @@ using mk61::core::PrefixState;
 
 QString to_qstr(std::string_view sv) {
   return QString::fromUtf8(sv.data(), static_cast<qsizetype>(sv.size()));
+}
+
+// Пауза одного кроку для режиму «Як на МК-61».
+// В інструкції калькулятора це верхні межі, не секундомір конкретного приладу:
+// арифметика, 1/x, √ і x² — до 0,5 с, логарифм і тригонометрія — до 2 с, x^y — до 3,5 с.
+// Пам'ять і переходи в інструкції окремо не розписані, вони помітно коротші за арифметику.
+int hardwareStepMs(std::uint8_t op) {
+  switch (op) {
+  case 0x15:
+  case 0x16: // F 10^x, F e^x
+    return 900;
+  case 0x17:
+  case 0x18:
+  case 0x19:
+  case 0x1A:
+  case 0x1B:
+  case 0x1C:
+  case 0x1D:
+  case 0x1E: // lg, ln, прямі й обернені тригонометричні
+    return 1400;
+  case 0x24: // F x^y
+    return 2400;
+  case 0x10:
+  case 0x11: // + −
+    return 280;
+  case 0x12:
+  case 0x13: // × ÷
+    return 420;
+  case 0x21:
+  case 0x22:
+  case 0x23: // √, x², 1/x
+    return 480;
+  case 0x26:
+  case 0x2A:
+  case 0x30:
+  case 0x33: // переведення кутів
+    return 500;
+  default:
+    if ((op >= 0x40 && op <= 0x4E) || (op >= 0x60 && op <= 0x6E)) {
+      return 140; // Х→П, П→Х
+    }
+    if (op >= 0x50 && op <= 0x5E) {
+      return 110; // С/П, БП, ПП, умови
+    }
+    if (op <= 0x0E) {
+      return 90;
+    }
+    return 180;
+  }
+}
+
+// Те, що на живому МК-61 спалахує під час програми: 0, вісім цифр мантиси X,
+// код команди і літера Е. Дванадцять розрядів, як на індикаторі.
+DisplayState runningGlance(const Calculator &calc, std::uint8_t op) {
+  char buf[32]{};
+  std::snprintf(buf, sizeof(buf), "%.7e", std::fabs(calc.raw_x().numeric));
+  std::string digits;
+  if (buf[0] >= '0' && buf[0] <= '9') {
+    digits.push_back(buf[0]);
+  }
+  for (int i = 2; i < 9; ++i) {
+    if (buf[i] >= '0' && buf[i] <= '9') {
+      digits.push_back(buf[i]);
+    }
+  }
+  while (digits.size() < 8) {
+    digits.push_back('0');
+  }
+  digits.resize(8);
+  std::string code = mk61::core::opcode_info(op).display_code;
+  if (code.size() < 2) {
+    code = "00";
+  }
+  code.resize(2);
+  DisplayState st;
+  st.text = "0" + digits + code + "E";
+  st.mantissa_part = st.text;
+  return st;
 }
 
 /// Індикатор на 12 розрядів, як ІЛЦ2-12/8Л на корпусі МК-61
@@ -177,7 +259,6 @@ public:
   explicit Mk61MainWindow(const QFont &vfd_font, QWidget *parent = nullptr)
       : QMainWindow(parent), vfd_font_(vfd_font) {
     setWindowTitle(QStringLiteral("Електроніка МК-61 — Емулятор програмованого мікрокалькулятора"));
-    setMinimumSize(820, 640);
 
     run_timer_ = new QTimer(this);
     run_timer_->setInterval(40);
@@ -185,14 +266,17 @@ public:
 
     setupUi();
     refreshAll();
+    rememberExpandedMinimum();
 
     if (const QScreen *scr = QGuiApplication::primaryScreen()) {
       const QRect avail = scr->availableGeometry();
-      const int target_w = std::min(1040, std::max(820, avail.width() - 60));
-      const int target_h = std::min(680, std::max(640, avail.height() - 60));
-      resize(target_w, target_h);
+      const int target_w = std::min(avail.width() - 40, expanded_min_size_.width() + 40);
+      const int target_h =
+        std::min(avail.height() - 40, std::max(expanded_min_size_.height(), 700));
+      resize(std::max(target_w, expanded_min_size_.width()),
+             std::max(target_h, expanded_min_size_.height()));
     } else {
-      resize(1020, 660);
+      resize(expanded_min_size_.grownBy(QMargins(0, 0, 40, 40)));
     }
   }
 
@@ -328,6 +412,10 @@ private:
   QFont vfd_font_;
   QTimer *run_timer_{nullptr};
   bool updating_ui_{false};
+  bool glance_phase_{false};
+  bool show_glance_{false};
+  DisplayState glance_state_{};
+  std::size_t visible_run_steps_{0};
   std::set<int> breakpoints_;
 
   // Елементи лівої панелі (корпус калькулятора)
@@ -340,7 +428,8 @@ private:
   QRadioButton *prg_btn_{nullptr};
   QPushButton *toggle_panel_btn_{nullptr};
   QWidget *inspector_panel_{nullptr};
-  QSize expanded_size_{1020, 660};
+  QSize expanded_size_{1400, 720};
+  QSize expanded_min_size_{1280, 680};
 
   // Елементи панелі відлагодження
   QPushButton *dbg_play_btn_{nullptr};
@@ -634,6 +723,8 @@ private:
                             "Клавіатура ПК: Home");
     case Key::RunStop:
       return QStringLiteral("АВТ: пуск до зупинки в програмі. ПРГ: записати команду С/П.\n"
+                            "Швидкість — у списку на панелі. Поки команда рахується, індикатор "
+                            "спалахує мантисою X і кодом команди.\n"
                             "F — умова x≠0. К — те саме за регістром.\n"
                             "Клавіатура ПК: пробіл");
     case Key::Store:
@@ -710,7 +801,8 @@ private:
                             "Клавіатура ПК: X");
     case Key::Enter:
       return QStringLiteral("Підняти стек: X копіюється в Y.\n"
-                            "F — прокрутити стек по колу. К — випадкове число. Це ще регістр e.\n"
+                            "F — прокрутити стек по колу. К — випадкове число: X замінюється, Y не "
+                            "рухається. Це ще регістр e.\n"
                             "Клавіатура ПК: Enter");
     case Key::D0:
       return QStringLiteral("Цифра 0, або регістр R0.\n"
@@ -900,6 +992,16 @@ private:
     tabs->addTab(createAssemblerTab(tabs), QStringLiteral("Редактор програм & Приклади"));
     tabs->addTab(createProgramMemoryTab(tabs), QStringLiteral("Таблиця пам'яті та Відлагодження"));
     tabs->addTab(createInstructionTab(tabs), QStringLiteral("Інструкція МК-61"));
+    tabs->tabBar()->setExpanding(false);
+    tabs->tabBar()->setElideMode(Qt::ElideNone);
+    tabs->tabBar()->setUsesScrollButtons(false);
+    tabs->tabBar()->ensurePolished();
+    int tabs_w = 24;
+    const QFontMetrics tab_fm(tabs->tabBar()->font());
+    for (int i = 0; i < tabs->count(); ++i) {
+      tabs_w += tab_fm.horizontalAdvance(tabs->tabText(i)) + 56;
+    }
+    tabs->setMinimumWidth(tabs_w);
     vbox->addWidget(tabs, 1);
 
     return panel;
@@ -924,8 +1026,7 @@ private:
 
     dbg_play_btn_ = new QPushButton(QStringLiteral("▶ Автокрок (F5)"), bar);
     dbg_play_btn_->setToolTip(QStringLiteral(
-      "Запустити/зупинити покрокове виконання з вибраною швидкістю та зупинкою на точках зупину "
-      "(F5)"));
+      "Пуск і пауза з тією самою швидкістю, що й С/П. Зупинка ще й на точці зупину (F5)"));
     dbg_play_btn_->setStyleSheet(
       QStringLiteral("QPushButton { background-color: #2e7d32; color: white; font-weight: bold; "
                      "padding: 4px 10px; border-radius: 4px; }"
@@ -948,14 +1049,28 @@ private:
     QObject::connect(bp_btn, &QPushButton::clicked, this, &Mk61MainWindow::toggleBreakpointAtPc);
 
     dbg_speed_combo_ = new QComboBox(bar);
+    dbg_speed_combo_->addItem(QStringLiteral("Як на МК-61"), -1);
     dbg_speed_combo_->addItem(QStringLiteral("Повільно (3 кр/с)"), 330);
     dbg_speed_combo_->addItem(QStringLiteral("Середньо (10 кр/с)"), 100);
-    dbg_speed_combo_->addItem(QStringLiteral("Реальний МК-61 (25 кр/с)"), 40);
-    dbg_speed_combo_->addItem(QStringLiteral("Швидко (100 кр/с)"), 10);
-    dbg_speed_combo_->setCurrentIndex(2);
-    QObject::connect(dbg_speed_combo_, &QComboBox::currentIndexChanged, this, [this](int /*idx*/) {
-      run_timer_->setInterval(dbg_speed_combo_->currentData().toInt());
-    });
+    dbg_speed_combo_->addItem(QStringLiteral("Швидко (25 кр/с)"), 40);
+    dbg_speed_combo_->addItem(QStringLiteral("Дуже швидко (100 кр/с)"), 10);
+    dbg_speed_combo_->addItem(QStringLiteral("Миттєво"), 0);
+    dbg_speed_combo_->setCurrentIndex(0);
+    dbg_speed_combo_->setToolTip(QStringLiteral(
+      "С/П і автокрок ідуть із цією паузою.\n"
+      "«Як на МК-61»: додавання і множення до пів секунди, логарифм і синус до двох, "
+      "степінь до трьох з половиною. На час команди індикатор спалахує рядком "
+      "0, вісім цифр мантиси X, код команди і літера Е, потім знову звичайне число.\n"
+      "«Миттєво» проганяє програму без пауз."));
+
+    keepButtonText(step_btn, 48);
+    keepButtonText(dbg_play_btn_, 48);
+    keepButtonText(reset_pc_btn, 48);
+    keepButtonText(bp_btn, 48);
+    keepComboText(dbg_speed_combo_);
+    bar->setMinimumWidth(step_btn->minimumWidth() + dbg_play_btn_->minimumWidth() +
+                         reset_pc_btn->minimumWidth() + bp_btn->minimumWidth() +
+                         dbg_speed_combo_->minimumWidth() + 6 * 5 + 28);
 
     dbg_current_step_label_ = new QLabel(bar);
     dbg_current_step_label_->setStyleSheet(
@@ -1267,11 +1382,12 @@ private:
             <span class="kop">×</span> (на комп'ютері зірочка). Вийде
             <span class="vfd">20.</span> Після дії стек сам піднімається, тому
             <span class="kop">В↑</span> перед четвіркою не потрібен.</li>
-        <li><b>2¹⁰.</b> <span class="knum">2</span>, <span class="kop">В↑</span>,
-            <span class="knum">1</span> <span class="knum">0</span>, потім жовта
+        <li><b>2¹⁰.</b> <span class="knum">10</span>, <span class="kop">В↑</span>,
+            <span class="knum">2</span>, потім жовта
             <span class="kf">F</span> і <span class="kop">↔</span>.
-            Над <span class="kop">↔</span> жовтим написано xʸ: основа лежить у Y, показник у X.
-            На комп'ютері: 2, Enter, 1, 0, F, X.</li>
+            Над <span class="kop">↔</span> жовтим написано xʸ: основа в X, показник у Y.
+            Десятка після цього лишається в Y.
+            На комп'ютері: 1, 0, Enter, 2, F, X.</li>
         <li><b>sin 30°.</b> Перемикач під індикатором поставте в <span class="kop">ГРД</span>.
             Потім <span class="knum">3</span> <span class="knum">0</span> <span class="kf">F</span>
             <span class="knum">7</span>. Над сімкою жовтим написано sin. У положенні
@@ -1515,7 +1631,10 @@ private:
             або впишіть мнемоніки чи таблицю 10×10 і натисніть «Записати в МК-61».
             «Відкрити» і «Зберегти» працюють із файлом.</li>
         <li>Один крок — <span class="kk">Крок (F10)</span> або <span class="kop">ШГ→</span> в АВТ.
-            Автокрок — F5, швидкість обирається поруч. 25 кроків за секунду близькі до живого МК-61.</li>
+            С/П і автокрок (F5) беруть паузу зі списку поруч. «Як на МК-61» — у межах інструкції
+            калькулятора: арифметика до пів секунди, логарифм і тригонометрія до двох, степінь
+            до трьох з половиною. Поки команда рахується, індикатор спалахує: нуль, вісім цифр
+            мантиси X, код команди і літера Е. Потім знову звичайне число.</li>
         <li>Точка зупину — подвійний клік по кроку у вкладці пам'яті або F9.
             І пуск пробілом, і автокрок на ній зупиняються.</li>
         <li><span class="kop">F12</span> або «Тільки МК-61» ховає бічну панель.
@@ -1634,15 +1753,16 @@ private:
         </tr>
         <tr>
           <td>Обмін <span class="kop">↔</span></td>
-          <td>Міняє місцями <span class="reg">X</span> ↔ <span class="reg">Y</span>
-              (<span class="reg">Z</span>, <span class="reg">T</span>, <span class="reg">X1</span> без змін).</td>
+          <td>Міняє місцями <span class="reg">X</span> ↔ <span class="reg">Y</span>.
+              Старе <span class="reg">X</span> переходить у <span class="reg">X1</span>.
+              <span class="reg">Z</span> і <span class="reg">T</span> нерухомі.</td>
           <td>Вмикає автопідняття стека.</td>
         </tr>
         <tr>
           <td>Кільцевий зсув <span class="kf">F</span> <span class="kop">В↑</span> (<span class="ffn">В↻</span>)</td>
-          <td>Кільцеве прокручування стека вниз:
+          <td>Кільцеве прокручування стека:
               <span class="reg">X</span> → <span class="reg">T</span> → <span class="reg">Z</span> →
-              <span class="reg">Y</span> → <span class="reg">X</span>.</td>
+              <span class="reg">Y</span> → <span class="reg">X</span>. Старе <span class="reg">X</span> ще й у <span class="reg">X1</span>.</td>
           <td>Дозволяє переглянути всі 4 регістри стека по колу.</td>
         </tr>
         <tr>
@@ -1682,7 +1802,7 @@ private:
           <td><span class="kf">F</span> <span class="knum">.</span></td>
           <td><span class="ffn">π</span></td>
           <td><span class="vfd">20</span></td>
-          <td>Заносить у стек <span class="reg">X</span> константу <b>π = 3.1415926</b> (піднімаючи стек).</td>
+          <td>Завжди піднімає стек і кладе <b>π = 3.1415926</b> в <span class="reg">X</span>. Старе <span class="reg">X</span> іде в <span class="reg">X1</span>.</td>
         </tr>
         <tr>
           <td><span class="kf">F</span> <span class="kop">-</span></td>
@@ -1706,8 +1826,8 @@ private:
           <td><span class="kf">F</span> <span class="kop">↔</span></td>
           <td><span class="ffn">xʸ</span></td>
           <td><span class="vfd">24</span></td>
-          <td>Піднесення до степеня <b>Y<sup>X</sup></b>: основа в <span class="reg">Y</span>, показник у <span class="reg">X</span>.<br>
-              <i>Приклад 2¹⁰ = 1024</i>: <span class="knum">2</span> <span class="kop">В↑</span> <span class="knum">1</span> <span class="knum">0</span> <span class="kf">F</span> <span class="kop">↔</span>. (При <span class="reg">Y</span> ≤ 0 видає <span class="vfd">ЕГГОГ</span>).</td>
+          <td>Степінь <b>X<sup>Y</sup></b>: основа в <span class="reg">X</span>, показник у <span class="reg">Y</span>. <span class="reg">Y</span> лишається на місці.<br>
+              <i>Приклад 2¹⁰</i>: <span class="knum">10</span> <span class="kop">В↑</span> <span class="knum">2</span> <span class="kf">F</span> <span class="kop">↔</span>. Якщо основа нуль або від'ємна — <span class="vfd">ЕГГОГ</span>.</td>
         </tr>
         <tr>
           <td><span class="kf">F</span> <span class="knum">0</span> / <span class="kf">F</span> <span class="knum">1</span></td>
@@ -1789,7 +1909,7 @@ private:
           <td><span class="kk">К</span> <span class="kop">В↑</span></td>
           <td><span class="kfn">СЧ</span></td>
           <td><span class="vfd">3B</span></td>
-          <td>Генератор псевдовипадкового числа в діапазоні <b>[0; 1)</b> (після ввімкнення перше число — <span class="vfd">0.404067</span>).</td>
+          <td>Генератор псевдовипадкового числа в діапазоні <b>[0; 1)</b> (після ввімкнення перше число — <span class="vfd">0.404067</span>). Старе <span class="reg">X</span> переходить у <span class="reg">X1</span>, а <span class="reg">Y</span>, <span class="reg">Z</span> і <span class="reg">T</span> лишаються. Наступна цифра підніме стек.</td>
         </tr>
         <tr>
           <td><span class="kk">К</span> <span class="knum">0</span></td>
@@ -1822,7 +1942,7 @@ private:
       <p><b>Прямий запис у пам'ять</b>: натисніть <span class="kop">Х→П</span> (у літературі також
       позначається <code>П</code>) та клавішу номера регістра (коди <span class="vfd">40</span>..<span class="vfd">4E</span>). Число в <span class="reg">X</span> зберігається.</p>
       <p><b>Пряме читання з пам'яті</b>: натисніть <span class="kop">П→Х</span> (у літературі
-      <code>ИП</code>) та клавішу номера регістра (коди <span class="vfd">60</span>..<span class="vfd">6E</span>). Якщо автопідняття стека активне, стек попередньо піднімається; проте якщо перед <span class="kop">П→Х</span> було натиснуто <span class="kop">В↑</span>, стек вдруге <b>не піднімається</b>.</p>
+      <code>ИП</code>) та клавішу номера регістра (коди <span class="vfd">60</span>..<span class="vfd">6E</span>). Стек піднімається завжди, навіть якщо перед цим був <span class="kop">В↑</span>: старе <span class="reg">X</span> іде в <span class="reg">Y</span>, а в <span class="reg">X</span> лягає вміст регістра. <span class="reg">X1</span> не змінюється.</p>
 
       <h2>6. Програмування (ПРГ), умовні переходи, цикли та непряма адресація</h2>
       <ul>
@@ -2041,8 +2161,14 @@ private:
       <ul>
         <li>Один крок — кнопка <span class="kk">⏭ Крок (F10)</span> або <span class="kop">ШГ→</span>
             в режимі <span class="ffn">АВТ</span>.</li>
-        <li>Автокрок — <span class="kop">▶ Автокрок (F5)</span>. Швидкість: 3, 10, 25 або 100 кроків/с.
-            25 кроків/с близькі до живого МК-61.</li>
+        <li>С/П і <span class="kop">▶ Автокрок (F5)</span> користуються одним списком швидкості.
+            «Як на МК-61» ставить паузу по команді, у межах з інструкції: додавання, віднімання,
+            множення, ділення, корінь, квадрат і 1/x — до пів секунди; логарифм і тригонометрія —
+            до двох секунд; x^y — до трьох з половиною. Пам'ять і переходи коротші.
+            Поки команда виконується, індикатор на мить показує те, що видно на живому МК-61
+            під час програми: 0, вісім цифр мантиси X, код команди і літеру Е. Далі знов звичайний
+            X, тож проміжний результат встигаєш прочитати. Стек і регістри оновлюються на кожному
+            кроці. «Миттєво» проганяє програму без пауз.</li>
         <li>Точка зупину (<code>●</code>) — подвійний клік по кроку у вкладці пам'яті або
             <span class="kop">● Точка зупину (F9)</span> на поточному PC. І звичайний пуск, і автокрок
             на ній зупиняються.</li>
@@ -2055,6 +2181,35 @@ private:
       </html>
     )"));
     return browser;
+  }
+
+  static void keepButtonText(QPushButton *button, int extra) {
+    button->ensurePolished();
+    button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    button->setMinimumWidth(button->fontMetrics().horizontalAdvance(button->text()) + extra);
+  }
+
+  static void keepComboText(QComboBox *box) {
+    box->ensurePolished();
+    int widest = 0;
+    const QFontMetrics fm = box->fontMetrics();
+    for (int i = 0; i < box->count(); ++i) {
+      widest = std::max(widest, fm.horizontalAdvance(box->itemText(i)));
+    }
+    box->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    box->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    box->setMinimumWidth(widest + 48);
+  }
+
+  void rememberExpandedMinimum() {
+    if (centralWidget() == nullptr || centralWidget()->layout() == nullptr) {
+      return;
+    }
+    centralWidget()->layout()->activate();
+    const QSize hint = centralWidget()->layout()->minimumSize();
+    expanded_min_size_.setWidth(std::max(hint.width(), 1100));
+    expanded_min_size_.setHeight(std::max(hint.height(), 640));
+    setMinimumSize(expanded_min_size_);
   }
 
   void showAbout() {
@@ -2103,11 +2258,12 @@ private:
       resize(392, 610);
     } else {
       setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
-      setMinimumSize(820, 640);
+      setMinimumSize(expanded_min_size_);
       inspector_panel_->setVisible(true);
       statusBar()->setVisible(true);
       toggle_panel_btn_->setText(QStringLiteral("◀ Тільки МК-61"));
-      resize(expanded_size_.width() >= 820 ? expanded_size_ : QSize(1020, 660));
+      resize(expanded_size_.width() >= expanded_min_size_.width() ? expanded_size_
+                                                                  : expanded_min_size_);
     }
   }
 
@@ -2129,16 +2285,12 @@ private:
   void onDebugPlayPauseClicked() {
     if (run_timer_->isActive()) {
       stopRunningTimer();
-      statusBar()->showMessage(QStringLiteral("Покрокове виконання призупинено."));
+      statusBar()->showMessage(QStringLiteral("Виконання призупинено."));
       refreshAll();
       return;
     }
     calc_.set_operating_mode(OperatingMode::Automatic);
-    run_timer_->setInterval(dbg_speed_combo_->currentData().toInt());
-    run_timer_->start();
-    statusBar()->showMessage(
-      QStringLiteral("Запущено покрокове виконання (F5 або С/П для паузи)..."));
-    refreshAll();
+    startVisibleRun();
   }
 
   void toggleBreakpointAtPc() {
@@ -2172,8 +2324,40 @@ private:
       refreshAll();
       return;
     }
+    startVisibleRun();
+  }
 
-    // Якщо є точки зупину, виконуємо з перевіркою точок зупину
+  int paceMs(std::uint8_t op) const {
+    const int selected = dbg_speed_combo_->currentData().toInt();
+    if (selected < 0) {
+      return hardwareStepMs(op);
+    }
+    return selected;
+  }
+
+  static int glanceMs(int total) {
+    if (total <= 30) {
+      return std::max(1, total / 4);
+    }
+    return std::min(90, total / 3);
+  }
+
+  void startVisibleRun() {
+    visible_run_steps_ = 0;
+    const std::uint8_t op = calc_.program_memory()[static_cast<std::size_t>(calc_.pc())];
+    if (paceMs(op) == 0) {
+      runBurst();
+      return;
+    }
+    glance_phase_ = true;
+    show_glance_ = false;
+    run_timer_->start(1);
+    statusBar()->showMessage(
+      QStringLiteral("Пуск. На спалаху — мантиса X і код команди, між спалахами — саме число."));
+    refreshAll();
+  }
+
+  void runBurst() {
     for (std::size_t s = 0; s < 100000; ++s) {
       if (s > 0 && breakpoints_.contains(calc_.pc())) {
         refreshAll();
@@ -2200,10 +2384,30 @@ private:
 
   void onRunTimerTick() {
     const std::uint8_t op = calc_.program_memory()[static_cast<std::size_t>(calc_.pc())];
+    const int total = paceMs(op);
+    if (total <= 0) {
+      stopRunningTimer();
+      runBurst();
+      return;
+    }
+
+    if (glance_phase_) {
+      glance_state_ = runningGlance(calc_, op);
+      show_glance_ = true;
+      glance_phase_ = false;
+      run_timer_->start(glanceMs(total));
+      refreshAll();
+      return;
+    }
+
+    show_glance_ = false;
     const bool keep_going = calc_.step_program();
+    ++visible_run_steps_;
+    glance_phase_ = true;
     refreshAll();
     if (!keep_going) {
       stopRunningTimer();
+      refreshAll();
       if (calc_.is_error()) {
         statusBar()->showMessage(QStringLiteral("Аварійна зупинка програми: ЕГГОГ."));
       } else if (op == 0x50U) {
@@ -2216,13 +2420,24 @@ private:
       refreshAll();
       statusBar()->showMessage(QStringLiteral("Досягнуто точку зупину (●) на кроці %1.")
                                  .arg(to_qstr(mk61::core::format_step_address(calc_.pc()))));
+      return;
     }
+    if (visible_run_steps_ >= 100000) {
+      stopRunningTimer();
+      refreshAll();
+      statusBar()->showMessage(
+        QStringLiteral("Увага: зупинено через досягнення ліміту 100 000 кроків."));
+      return;
+    }
+    run_timer_->start(std::max(1, total - glanceMs(total)));
   }
 
   void stopRunningTimer() {
     if (run_timer_->isActive()) {
       run_timer_->stop();
     }
+    glance_phase_ = false;
+    show_glance_ = false;
   }
 
   void onRegisterItemChanged(QTableWidgetItem *item) {
@@ -2370,9 +2585,13 @@ private:
   void refreshAll() {
     updating_ui_ = true;
 
-    // 1. Індикатор ВЛІ
-    const auto disp = calc_.display();
-    vfd_screen_->setDisplayState(disp);
+    // 1. Індикатор ВЛІ. Під час кроку на мить лишаємо спалах «0…кодЕ»,
+    // між спалахами — звичайне число з регістра X.
+    if (show_glance_) {
+      vfd_screen_->setDisplayState(glance_state_);
+    } else {
+      vfd_screen_->setDisplayState(calc_.display());
+    }
 
     const QString mode_str = (calc_.operating_mode() == OperatingMode::Automatic)
                                ? QStringLiteral("АВТ")

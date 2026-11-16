@@ -299,9 +299,10 @@ void Calculator::handle_sign_key() {
     }
     x_ = RegisterValue{parse_entry_value()};
   } else {
+    // Знак міняє лише X. Прапорець автопідняття лишається як був:
+    // після В↑ наступна цифра замінить X, після дії — підніме стек.
     x_.numeric = is_zero_mk61(x_.numeric) ? 0.0 : -x_.numeric;
     x_.is_logical = false;
-    stack_lift_ = true;
   }
 }
 
@@ -529,7 +530,8 @@ void Calculator::execute_opcode(std::uint8_t opcode, std::optional<std::uint8_t>
     }
     set_binary_result(y_.numeric / x_.numeric);
     return;
-  case 0x14U: { // ↔ (обмін X та Y)
+  case 0x14U: { // ↔ (обмін X та Y). Старе X іде в X1, Z і T нерухомі.
+    x1_ = x_;
     std::swap(x_, y_);
     stack_lift_ = true;
     return;
@@ -587,10 +589,9 @@ void Calculator::execute_opcode(std::uint8_t opcode, std::optional<std::uint8_t>
     set_unary_result(std::sin(rad) / c);
     return;
   }
-  case 0x20U: { // F π
-    if (stack_lift_) {
-      push_stack();
-    }
+  case 0x20U: { // F π. Завжди піднімає стек, навіть після В↑. Старе X іде в X1.
+    x1_ = x_;
+    push_stack();
     x_ = RegisterValue{kPiMk61};
     stack_lift_ = true;
     return;
@@ -612,21 +613,18 @@ void Calculator::execute_opcode(std::uint8_t opcode, std::optional<std::uint8_t>
     }
     set_unary_result(1.0 / x_.numeric);
     return;
-  case 0x24U: { // F x^y (у МК-61 основа у Y, показник у X: Y^X)
-    if (y_.numeric <= 0.0 && is_zero_mk61(y_.numeric) && x_.numeric <= 0.0) {
+  case 0x24U: { // F x^y: основа в X, показник у Y. Y, Z, T не опускаються.
+    x1_ = x_;
+    if (x_.numeric < 0.0 || is_zero_mk61(x_.numeric)) {
       trigger_error();
       return;
     }
-    if (y_.numeric < 0.0) {
-      // На МК-61 x^y обчислюється через exp(X * ln(Y)), тому при Y <= 0 видає ЕГГОГ
-      trigger_error();
-      return;
-    }
-    set_binary_result(std::pow(y_.numeric, x_.numeric));
+    set_unary_result(std::pow(x_.numeric, y_.numeric));
     return;
   }
-  case 0x25U: { // F В↻ (кільцевий зсув стека: X -> T, Y -> X, Z -> Y, T -> Z)
+  case 0x25U: { // F В↻ (X → T → Z → Y → X). Старе X також лишається в X1.
     const RegisterValue old_x = x_;
+    x1_ = old_x;
     x_ = y_;
     y_ = z_;
     z_ = t_;
@@ -726,7 +724,6 @@ void Calculator::execute_opcode(std::uint8_t opcode, std::optional<std::uint8_t>
     out.numeric = numeric_approx;
     x1_ = x_;
     x_ = out;
-    drop_stack();
     stack_lift_ = true;
     return;
   }
@@ -749,10 +746,8 @@ void Calculator::execute_opcode(std::uint8_t opcode, std::optional<std::uint8_t>
     return;
   }
   case 0x3BU: { // К СЧ (генератор псевдовипадкових чисел [0, 1))
-    if (stack_lift_) {
-      push_stack();
-    }
-    // Детермінований генератор, де перше число після ввімкнення = 0.404067
+    // Команда замінює X. Старе X іде в X1, а Y, Z і T не зсуваються.
+    // Наступна набрана цифра підніме стек, як після звичайного результату.
     const std::uint64_t raw = rng_state_;
     rng_state_ = (rng_state_ * 6364136223846793005ULL + 1442695040888963407ULL);
     double r = 0.0;
@@ -762,6 +757,7 @@ void Calculator::execute_opcode(std::uint8_t opcode, std::optional<std::uint8_t>
       const std::uint32_t digits = static_cast<std::uint32_t>((raw >> 16U) % 10000000ULL);
       r = static_cast<double>(digits) / 10000000.0;
     }
+    x1_ = x_;
     x_ = RegisterValue{round_mk61(r)};
     stack_lift_ = true;
     return;
@@ -858,10 +854,8 @@ void Calculator::execute_opcode(std::uint8_t opcode, std::optional<std::uint8_t>
       regs_[lo] = x_;
       stack_lift_ = true;
       return;
-    case 0x06U: // П→Х n (ИП n)
-      if (stack_lift_) {
-        push_stack();
-      }
+    case 0x06U: // П→Х n. Стек піднімається завжди, навіть одразу після В↑.
+      push_stack();
       x_ = regs_[lo];
       stack_lift_ = true;
       return;
@@ -917,9 +911,7 @@ void Calculator::execute_opcode(std::uint8_t opcode, std::optional<std::uint8_t>
     case 0x0DU: { // К П→Х n (К ИП n)
       const auto target_reg = resolve_indirect_reg(lo);
       if (target_reg.has_value()) {
-        if (stack_lift_) {
-          push_stack();
-        }
+        push_stack();
         x_ = regs_[*target_reg];
         stack_lift_ = true;
       }

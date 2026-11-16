@@ -9,6 +9,9 @@
 
 namespace mk61::core {
 
+// Це не запас «на всяк випадок», а формат самої команди.
+// Номер регістра — півбайт 0..E у коді Х→П / П→Х. Адреса кроку — один байт:
+// 00..99 і A0..A4, тобто рівно 105 кроків. Шостий виклик ПП уже дає ЕГГОГ.
 inline constexpr std::size_t kProgramSize = 105;
 inline constexpr std::size_t kRegisterCount = 15;
 inline constexpr std::size_t kReturnStackSize = 5;

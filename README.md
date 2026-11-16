@@ -43,7 +43,7 @@ With no arguments you get `МК-61 [АВТ | PC=00]>`. Nothing happens on a bare
 
 ```text
 2 В↑ 3 +
-2 ^ 10 F ↔          # ^ is В↑, F ↔ is x^y
+10 ^ 2 F ↔          # ^ is В↑: 10 stays in Y, 2^10 goes to X
 :deg
 30 F 7              # sin 30°
 :p                  # seven built-in programs

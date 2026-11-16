@@ -563,7 +563,7 @@ OpcodeInfo opcode_info(std::uint8_t code) {
     return info;
   case 0x24U:
     info.mnemonic = "F xʸ";
-    info.description = "Піднесення до степеня (Y^X)";
+    info.description = "Піднесення до степеня X^Y, стек не опускається";
     return info;
   case 0x25U:
     info.mnemonic = "F В↻";
