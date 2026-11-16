@@ -1,0 +1,9 @@
+#!/bin/sh
+# Бінарник і Qt лежать у lib/mk61emu. Системний libQt6*.so з /usr не чіпаємо.
+set -eu
+bindir="$(dirname "$(readlink -f "$0")")"
+libdir="$(readlink -f "$bindir/../@MK61_BUNDLE_LIBDIR@")"
+export LD_LIBRARY_PATH="$libdir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export QT_PLUGIN_PATH="$libdir/plugins"
+export QT_QPA_PLATFORM_PLUGIN_PATH="$libdir/plugins/platforms"
+exec "$libdir/mk61emu-gui" "$@"

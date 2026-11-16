@@ -49,7 +49,7 @@ enum class PrefixState : std::uint8_t {
   WaitAddr2,         // Очікування другої цифри адреси переходу
 };
 
-/// Result of running a program in automatic mode
+/// Чим закінчилось виконання програми в автоматичному режимі
 enum class RunStatus : std::uint8_t {
   StoppedAtSP,      // Зупинено на команді С/П (50)
   Error,            // Сталася помилка (ЕГГОГ)

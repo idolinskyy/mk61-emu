@@ -17,7 +17,7 @@ struct PresetProgram {
 /// Повертає список усіх вбудованих прикладів програм для МК-61
 [[nodiscard]] std::span<const PresetProgram> builtin_programs() noexcept;
 
-/// Шукає вбудовану програму за ідентифікатором (id) або номером ("1".."6")
+/// Шукає вбудовану програму за ідентифікатором або номером ("1".."7")
 [[nodiscard]] const PresetProgram *find_builtin_program(std::string_view id_or_index) noexcept;
 
 } // namespace mk61::core

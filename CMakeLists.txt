@@ -97,3 +97,84 @@ if(CLANG_FORMAT_EXECUTABLE)
         COMMAND "${CLANG_FORMAT_EXECUTABLE}" --dry-run --Werror ${PROJECT_FORMAT_SOURCES}
         VERBATIM)
 endif()
+
+include(GNUInstallDirs)
+
+if(TARGET cli_app)
+    install(TARGETS cli_app
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+set(MK61_BUNDLE_QT OFF)
+if(TARGET gui_app AND UNIX AND NOT APPLE AND DEFINED Qt6_DIR)
+    get_filename_component(MK61_QT_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
+    if(NOT MK61_QT_PREFIX MATCHES "^/usr(/|$)")
+        set(MK61_BUNDLE_QT ON)
+        set(MK61_BUNDLE_LIBDIR "${CMAKE_INSTALL_LIBDIR}/mk61emu")
+    endif()
+endif()
+
+if(TARGET gui_app AND MK61_BUNDLE_QT)
+    set_target_properties(gui_app PROPERTIES INSTALL_RPATH "$ORIGIN")
+    install(TARGETS gui_app
+        RUNTIME DESTINATION ${MK61_BUNDLE_LIBDIR})
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/packaging/mk61emu-wrapper.sh.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/mk61emu-wrapper.sh"
+        @ONLY
+        NEWLINE_STYLE UNIX)
+    install(PROGRAMS "${CMAKE_CURRENT_BINARY_DIR}/mk61emu-wrapper.sh"
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
+        RENAME mk61emu-gui)
+    install(CODE "
+        set(MK61_QT_PREFIX \"${MK61_QT_PREFIX}\")
+        set(MK61_BUNDLE_LIBDIR \"${MK61_BUNDLE_LIBDIR}\")
+        include(\"${CMAKE_CURRENT_SOURCE_DIR}/cmake/InstallBundledQt.cmake\")
+    ")
+elseif(TARGET gui_app)
+    install(TARGETS gui_app
+        BUNDLE DESTINATION .
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+if(TARGET gui_app)
+    foreach(_mk61_icon_size 16 24 32 48 64 128 256 512)
+        install(FILES
+            "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icons/hicolor/${_mk61_icon_size}x${_mk61_icon_size}/apps/mk61emu.png"
+            DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/${_mk61_icon_size}x${_mk61_icon_size}/apps")
+    endforeach()
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/mk61emu.desktop"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications")
+endif()
+
+install(FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+    "${CMAKE_CURRENT_SOURCE_DIR}/NOTICE"
+    "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
+    "${CMAKE_CURRENT_SOURCE_DIR}/README.uk.md"
+    DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+
+set(CPACK_PACKAGE_NAME "mk61emu")
+set(CPACK_PACKAGE_VENDOR "Ihor Dolinskyi")
+set(CPACK_PACKAGE_CONTACT "Ihor Dolinskyi <idolinskyy@gmail.com>")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "Emulator of the Elektronika MK-61 programmable calculator")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+set(CPACK_STRIP_FILES TRUE)
+if(UNIX AND NOT APPLE)
+    set(CPACK_GENERATOR "DEB;TGZ")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Ihor Dolinskyi <idolinskyy@gmail.com>")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "science")
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+    if(MK61_BUNDLE_QT)
+        # У пакеті свій Qt з префікса збірки, системний libqt6widgets не тягнемо.
+        set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
+        set(CPACK_DEBIAN_PACKAGE_DEPENDS
+            "libc6, libstdc++6, libgcc-s1, libgl1, libegl1, libx11-6, libx11-xcb1, libxcb1, libxkbcommon0, libxkbcommon-x11-0, libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render0, libxcb-render-util0, libxcb-shape0, libxcb-shm0, libxcb-sync1, libxcb-xfixes0, libxcb-xkb1, libxcb-util1, libxcb-glx0, libfontconfig1, libfreetype6, zlib1g, libglib2.0-0 | libglib2.0-0t64, libdbus-1-3, libzstd1")
+    else()
+        set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    endif()
+endif()
+include(CPack)

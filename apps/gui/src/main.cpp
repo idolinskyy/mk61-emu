@@ -59,7 +59,7 @@ QString to_qstr(std::string_view sv) {
   return QString::fromUtf8(sv.data(), static_cast<qsizetype>(sv.size()));
 }
 
-/// Кастомний віджет 12-розрядного вакуумно-люмінесцентного індикатора (ІЛЦ2-12/8Л)
+/// Індикатор на 12 розрядів, як ІЛЦ2-12/8Л на корпусі МК-61
 class VfdScreenWidget final : public QWidget {
 public:
   explicit VfdScreenWidget(const QFont &vfd_font, QWidget *parent = nullptr)
@@ -364,8 +364,7 @@ private:
     main_layout->setContentsMargins(8, 8, 8, 8);
     main_layout->setSpacing(10);
 
-    // Ліва колонка: фіксований за висотою та шириною корпус калькулятора (не розтягується і не
-    // стискається по вертикалі!)
+    // Зліва корпус фіксованого розміру, справа панель забирає решту вікна.
     auto *left_container = new QWidget(central);
     auto *left_vbox = new QVBoxLayout(left_container);
     left_vbox->setContentsMargins(0, 0, 0, 0);
@@ -384,7 +383,7 @@ private:
 
   QWidget *createCalculatorFaceplate(QWidget *parent) {
     auto *face = new QFrame(parent);
-    // Фіксований оптимальний розмір корпусу МК-61: кнопки ніколи не урізаються і не роз'їжджаються
+    // Розмір корпусу фіксований, інакше сітка клавіш роз'їжджається.
     face->setFixedSize(376, 594);
     face->setStyleSheet(
       QStringLiteral("QFrame#mk61Face { background-color: #26292e; border: 3px solid #3d424a; "
@@ -449,7 +448,22 @@ private:
     status_badge_label_->setFixedHeight(16);
     status_badge_label_->setStyleSheet(
       QStringLiteral("color: #2bbd7e; font-size: 11px; font-weight: bold;"));
-    vfd_layout->addWidget(status_badge_label_);
+    auto *badge_row = new QHBoxLayout();
+    badge_row->setContentsMargins(0, 0, 0, 0);
+    badge_row->setSpacing(4);
+    badge_row->addWidget(status_badge_label_, 1);
+    auto *about_btn = new QPushButton(QStringLiteral("Про"), vfd_frame);
+    about_btn->setCursor(Qt::PointingHandCursor);
+    about_btn->setFocusPolicy(Qt::NoFocus);
+    about_btn->setFixedHeight(16);
+    about_btn->setToolTip(QStringLiteral("Версія, ліцензія GPL, Qt і шрифт індикатора"));
+    about_btn->setStyleSheet(QStringLiteral(
+      "QPushButton { background: transparent; color: #2bbd7e; border: 1px solid #1b5c3a; "
+      "border-radius: 3px; font-size: 10px; padding: 0 5px; }"
+      "QPushButton:hover { background-color: #123824; }"));
+    QObject::connect(about_btn, &QPushButton::clicked, this, &Mk61MainWindow::showAbout);
+    badge_row->addWidget(about_btn);
+    vfd_layout->addLayout(badge_row);
 
     vfd_screen_ = new VfdScreenWidget(vfd_font_, vfd_frame);
     vfd_layout->addWidget(vfd_screen_);
@@ -748,7 +762,7 @@ private:
     top_split->addWidget(regs_group, 1);
     vbox->addLayout(top_split);
 
-    // 3. Панель відлагодження (Debugger Bar: Покрокове виконання, Пуск/Пауза, Точки зупину)
+    // Крок, автокрок і точки зупину.
     vbox->addWidget(createDebuggerBar(panel));
 
     // 4. Нижня частина: вкладки
@@ -799,8 +813,8 @@ private:
 
     auto *bp_btn = new QPushButton(QStringLiteral("● Точка зупину (F9)"), bar);
     bp_btn->setToolTip(QStringLiteral(
-      "Поставити або зняти точку зупину (breakpoint) на поточному кроці PC (або двічі клікніть "
-      "на рядок у таблиці пам'яті)"));
+      "Поставити або зняти точку зупину на поточному кроці (або двічі клікніть рядок у таблиці "
+      "пам'яті)"));
     QObject::connect(bp_btn, &QPushButton::clicked, this, &Mk61MainWindow::toggleBreakpointAtPc);
 
     dbg_speed_combo_ = new QComboBox(bar);
@@ -959,60 +973,714 @@ private:
 
   QWidget *createInstructionTab(QWidget *parent) {
     auto *browser = new QTextBrowser(parent);
+    browser->setStyleSheet(QStringLiteral(
+      "QTextBrowser { background-color: #12161c; color: #e2e8f0; border: 1px solid #2c3540; "
+      "padding: 8px; selection-background-color: #1e5638; selection-color: #ffffff; }"));
+
     browser->setHtml(QStringLiteral(R"(
-      <h2>Інструкція з експлуатації та відлагодження «Електроніка МК-61»</h2>
-      <p><b>Електроніка МК-61</b> — радянський інженерний програмований мікрокалькулятор зі
-      зворотним польським записом (ОПЗ / RPN), 4-регістровим автоматичним стеком (<b>X, Y, Z, T</b>),
-      регістром попереднього результату (<b>X1</b>), <b>15 регістрами пам'яті</b> (<code>0..9, a..e</code>)
-      та <b>105 кроками пам'яті програм</b> (адреси <code>00..99</code> та <code>-0..-4</code>).</p>
+      <html>
+      <head>
+      <style>
+        body {
+          background-color: #12161c;
+          color: #e2e8f0;
+          font-size: 13px;
+          line-height: 1.45;
+        }
+        h1 {
+          color: #4aff9e;
+          font-size: 19px;
+          border-bottom: 2px solid #1f4d36;
+          padding-bottom: 6px;
+          margin-top: 4px;
+        }
+        h2 {
+          color: #ffd54f;
+          background-color: #1b222c;
+          font-size: 15px;
+          padding: 6px 10px;
+          border-left: 4px solid #f0b90b;
+          margin-top: 18px;
+          margin-bottom: 8px;
+        }
+        h3 {
+          color: #80deea;
+          font-size: 13px;
+          margin-top: 12px;
+          margin-bottom: 4px;
+        }
+        p, li {
+          color: #dce3ea;
+          margin-top: 4px;
+          margin-bottom: 4px;
+        }
+        /* Бейджі фізичних клавіш МК-61 */
+        .kf {
+          background-color: #f0b90b;
+          color: #141619;
+          font-weight: bold;
+          padding: 1px 6px;
+        }
+        .kk {
+          background-color: #1e88e5;
+          color: #ffffff;
+          font-weight: bold;
+          padding: 1px 6px;
+        }
+        .kcx {
+          background-color: #d84315;
+          color: #ffffff;
+          font-weight: bold;
+          padding: 1px 6px;
+        }
+        .knum {
+          background-color: #e0e3e8;
+          color: #141619;
+          font-weight: bold;
+          padding: 1px 6px;
+        }
+        .kop {
+          background-color: #383e47;
+          color: #ffffff;
+          font-weight: bold;
+          padding: 1px 6px;
+        }
+        /* Надклавішні позначення F (жовті) та К (блакитні) */
+        .ffn {
+          background-color: #2b230f;
+          color: #ffd54f;
+          font-weight: bold;
+          padding: 1px 5px;
+        }
+        .kfn {
+          background-color: #0d2538;
+          color: #4fc3f7;
+          font-weight: bold;
+          padding: 1px 5px;
+        }
+        /* Регістри стека та пам'яті */
+        .reg {
+          background-color: #0e291c;
+          color: #69f0ae;
+          font-weight: bold;
+          font-family: monospace;
+          padding: 1px 5px;
+        }
+        /* Показання вакуумно-люмінесцентного індикатора (ВЛІ) */
+        .vfd {
+          background-color: #05120c;
+          color: #4aff9e;
+          font-weight: bold;
+          font-family: monospace;
+          padding: 1px 6px;
+        }
+        /* Важливі попередження та примітки */
+        .note {
+          background-color: #1a2430;
+          color: #b3e5fc;
+          padding: 8px 10px;
+          margin-top: 6px;
+          margin-bottom: 8px;
+        }
+        .warn {
+          background-color: #2b1d16;
+          color: #ffcc80;
+          padding: 8px 10px;
+          margin-top: 6px;
+          margin-bottom: 8px;
+        }
+        table {
+          border-collapse: collapse;
+          width: 100%;
+          margin-top: 6px;
+          margin-bottom: 10px;
+        }
+        th {
+          background-color: #1f2833;
+          color: #ffd54f;
+          font-weight: bold;
+          padding: 5px 7px;
+          border: 1px solid #323f4f;
+          text-align: left;
+        }
+        td {
+          background-color: #161c24;
+          color: #e2e8f0;
+          padding: 4px 7px;
+          border: 1px solid #283240;
+        }
+      </style>
+      </head>
+      <body>
 
-      <h3>1. Покрокове відлагодження програм (Debugger)</h3>
-      <ul>
-        <li><b>Покрокове виконання (1 крок)</b>: натискайте кнопку <b><code>⏭ Крок (F10)</code></b> на панелі
-            відлагодження або клавішу <b><code>ШГ→</code></b> на калькуляторі в режимі <b>АВТ</b>. Калькулятор
-            виконає рівно одну інструкцію за поточною адресою <code>PC</code> і одразу покаже зміни у стеку
-            <code>X, Y, Z, T</code> та регістрах <code>R0..RE</code>.</li>
-        <li><b>Автоматичне покрокове виконання з візуалізацією</b>: натисніть <b><code>▶ Автокрок (F5)</code></b>
-            та оберіть бажану швидкість (від 3 до 100 кроків/с).</li>
-        <li><b>Точки зупину (Breakpoints <code>●</code>)</b>: двічі клікніть на будь-який крок у вкладці
-            «Таблиця пам'яті та Відлагодження» або натисніть <b><code>● Точка зупину (F9)</code></b>, щоб
-            поставити точку зупину. Виконання програми автоматично призупиниться перед цим кроком.</li>
-      </ul>
+      <h1>Електроніка МК-61</h1>
+      <p>Це емулятор того калькулятора, який стояв на столі: ті самі клавіші, стек і коди команд.
+      Руками рахується так само, програма вміщує до <b>105 кроків</b>.</p>
+      <p>Бічна панель показує стек, регістри і пам'ять програм. <span class="kop">F12</span>
+      (кнопка <span class="kop">Тільки МК-61</span>) її ховає. Кнопка <b>Про</b> біля рядка режиму
+      на індикаторі — версія і ліцензії. Готові приклади і свій текст програми — на вкладці
+      «Редактор програм»: мнемоніки, мітки або таблиця 10×10, потім «Записати в МК-61».</p>
+      <p>З клавіатури комп'ютера цифри і <span class="kop">+ − * /</span> збігаються з корпусом.
+      <span class="kop">Enter</span> — <span class="kop">В↑</span>, <span class="kcx">Esc</span> і
+      Backspace — <span class="kcx">Сх</span>, пробіл — <span class="kop">С/П</span>, Home —
+      <span class="kop">В/О</span>. <span class="kop">F10</span> робить один крок,
+      <span class="kop">F5</span> пускає автокрок, <span class="kop">F9</span> ставить точку зупину.
+      Подвійний клік по кроку у вкладці пам'яті робить те саме.</p>
+      <p>Далі — як влаштований сам МК-61. Якщо колись працювали з Б3-34, більшість буде знайома;
+      є одна пастка в умовних переходах, про неї в розділі 6.</p>
 
-      <h3>2. Обчислення у зворотному польському записі (ОПЗ)</h3>
+      <h2>1. Загальні відомості, індикатор та перемикачі</h2>
       <ul>
-        <li>Клавіші <code>=</code> немає. Спочатку вводяться операнди (розділяючись клавішею
-            <b><code>В↑</code></b>), а потім — клавіша операції.</li>
-        <li>Приклад <code>2 + 3</code>: натисніть <code>2</code> → <code>В↑</code> → <code>3</code> → <code>+</code> (результат <code>5.</code>).</li>
-        <li>Для функції <b><code>F xʸ</code></b> (піднесення до степеня) основа знаходиться у регістрі <b>Y</b>,
-            а показник степеня — у регістрі <b>X</b>: <code>2</code> → <code>В↑</code> → <code>10</code> → <code>F</code> → <code>xʸ</code> = <code>1024.</code></li>
-        <li>При опусканні стека значення регістра <b>T</b> зберігається та копіюється в <b>Z</b>.</li>
-        <li>Команда <b><code>К max</code></b> записує максимум із <b>X</b> та <b>Y</b> у регістр <b>X</b> без опускання стека.</li>
-      </ul>
-
-      <h3>3. Робота з регістрами пам'яті та непряма адресація</h3>
-      <ul>
-        <li>Запис із X у регістр пам'яті: <b><code>Х→П</code></b> + клавіша регістра (<code>0..9</code> або <code>.=a, /-/=b, ВП=c, Сх=d, В↑=e</code>).</li>
-        <li>Читання з регістра пам'яті в X: <b><code>П→Х</code></b> + клавіша регістра.</li>
-        <li><b>Непряма адресація</b> (через префікс <b><code>К</code></b>: <code>К Х→П n</code>, <code>К П→Х n</code>, <code>К БП n</code>, <code>К ПП n</code>):
-          <ul>
-            <li>Якщо вказано регістр <b><code>0, 1, 2, 3</code></b> — його ціла частина <b>спочатку зменшується на 1 (декремент)</b>, після чого використовується як номер цільового регістра або адреса кроку.</li>
-            <li>Якщо вказано регістр <b><code>4, 5, 6</code></b> — його ціла частина <b>спочатку збільшується на 1 (інкремент)</b>, після чого використовується як адреса.</li>
-            <li>Регістри <b><code>7..E</code></b> при непрямій адресації не змінюються.</li>
-          </ul>
+        <li><b>Індикатор ВЛІ (12 розрядів)</b>: 8 розрядів відведено під мантису числа (разом із
+            десятковою крапкою), 1 розряд зліва — під знак мантиси, 2 розряди справа — під порядок
+            числа (від <span class="vfd">-99</span> до <span class="vfd">+99</span>) або двозначну
+            адресу кроку програми (<span class="vfd">00</span>..<span class="vfd">99</span>,
+            <span class="vfd">-0</span>..<span class="vfd">-4</span>), і ще 1 розряд перед порядком —
+            під знак порядку.</li>
+        <li><b>Діапазон чисел</b>: за абсолютною величиною від <span class="vfd">10⁻⁹⁹</span> до
+            <span class="vfd">9.9999999 × 10⁹⁹</span>. При виході результату за верхню межу або при
+            неприпустимій математичній операції (ділення на нуль, корінь із від'ємного числа,
+            логарифм числа ≤ 0, переповнення стека підпрограм) на індикаторі висвічується аварійний
+            сигнал <span class="vfd">&nbsp;ЕГГОГ&nbsp;</span>. Для скидання помилки натисніть
+            червону клавішу <span class="kcx">Сх</span>.</li>
+        <li><b>Перемикач одиниць кутів</b>:
+            <span class="kop">Р</span> — радіани,
+            <span class="kop">ГРД</span> — градуси (360° у колі),
+            <span class="kop">Г</span> — гради (400 град у колі, 100 град = 90°).</li>
+        <li><b>Режими роботи калькулятора</b>:
+            <ul>
+              <li><b>Автоматичний режим (<span class="ffn">АВТ</span>)</b> — вмикається під час
+                  запуску або комбінацією <span class="kf">F</span> <span class="knum">/-/</span>
+                  (<span class="ffn">АВТ</span>). Слугує для ручних обчислень та виконання програм.</li>
+              <li><b>Режим програмування (<span class="ffn">ПРГ</span>)</b> — вмикається комбінацією
+                  <span class="kf">F</span> <span class="knum">ВП</span>
+                  (<span class="ffn">ПРГ</span>). Слугує для запису, перегляду та редагування
+                  кроків програми в пам'яті.</li>
+            </ul>
         </li>
+        <li><b>Модифікатори (префіксні клавіші)</b>:
+            більшість із 30 клавіш мають три призначення:
+            <ol>
+              <li><b>Основне</b> — нанесене безпосередньо на поверхні клавіші;</li>
+              <li><b>Жовте (префікс <span class="kf">F</span>)</b> — викликається попереднім
+                  натисканням жовтої клавіші <span class="kf">F</span> (надписи над клавішами
+                  ліворуч, напр. <span class="kf">F</span> <span class="knum">7</span> →
+                  <span class="ffn">sin</span>);</li>
+              <li><b>Синє (префікс <span class="kk">К</span>)</b> — викликається попереднім
+                  натисканням синьої клавіші <span class="kk">К</span> (надписи над клавішами
+                  праворуч, напр. <span class="kk">К</span> <span class="knum">7</span> →
+                  <span class="kfn">[x]</span>).</li>
+            </ol>
+            Якщо префікс <span class="kf">F</span> або <span class="kk">К</span> натиснуто помилково,
+            його можна скасувати комбінацією <span class="kf">F</span> <span class="kcx">Сх</span>
+            (<span class="ffn">CF</span>).</li>
       </ul>
 
-      <h3>4. Програмування та особливість умовних переходів</h3>
+      <h2>2. Введення чисел та виправлення помилок</h2>
       <ul>
-        <li>Перехід у режим програмування: <b><code>F ПРГ</code></b> (або перемикач <b>ПРГ</b>). Повернення до обчислень: <b><code>F АВТ</code></b>.</li>
-        <li><b>Важливе правило умовних переходів МК-61</b> (<code>F x=0</code>, <code>F x≠0</code>, <code>F x&lt;0</code>, <code>F x≥0</code>):
-            <b>перехід на вказану адресу відбувається тоді, коли перевірювана умова НЕ ВИКОНУЄТЬСЯ!</b></li>
-        <li><b>Цикли <code>F L0</code>, <code>F L1</code>, <code>F L2</code>, <code>F L3</code></b>: зменшують значення відповідного регістра
-            (<code>R0..R3</code>) на 1 і виконують перехід на задану адресу, доки нове значення в регістрі <code>&gt; 0</code>.</li>
+        <li><b>Цілі та дробові числа</b> набираються цифровими клавішами
+            <span class="knum">0</span>..<span class="knum">9</span> та клавішею десяткової крапки
+            <span class="knum">.</span> (наприклад: <span class="knum">3</span>
+            <span class="knum">.</span> <span class="knum">1</span> <span class="knum">4</span>).</li>
+        <li><b>Зміна знака числа</b> виконується клавішею <span class="knum">/-/</span>
+            <b>після</b> введення мантиси (наприклад, для введення <code>-25.4</code> натисніть
+            <span class="knum">2</span> <span class="knum">5</span> <span class="knum">.</span>
+            <span class="knum">4</span> <span class="knum">/-/</span>).</li>
+        <li><b>Введення числа з порядком (експонентою)</b>:
+            введіть мантису, натисніть <span class="knum">ВП</span> («Введення порядку»), введіть
+            дві цифри порядку і, якщо порядок від'ємний, натисніть <span class="knum">/-/</span>.
+            <br><i>Приклад</i>: для введення <code>-1.6 × 10⁻¹⁹</code> натисніть:
+            <span class="knum">1</span> <span class="knum">.</span> <span class="knum">6</span>
+            <span class="knum">/-/</span> <span class="knum">ВП</span> <span class="knum">1</span>
+            <span class="knum">9</span> <span class="knum">/-/</span>
+            (на індикаторі: <span class="vfd">-1.6 &nbsp;&nbsp;&nbsp;&nbsp;-19</span>).</li>
+        <li><b>Очищення поточного числа</b>: клавіша <span class="kcx">Сх</span> («Скидання X»)
+            обнуляє тільки видимий регістр <span class="reg">X</span> (<span class="vfd">0.</span>),
+            не змінюючи вміст інших регістрів стека (<span class="reg">Y</span>,
+            <span class="reg">Z</span>, <span class="reg">T</span>) та пам'яті.</li>
       </ul>
+
+      <h2>3. Операційний стек ОПЗ (X, Y, Z, T) та регістр X1</h2>
+      <p>У мікрокалькуляторі МК-61 використовується <b>зворотний польський запис (ОПЗ)</b> і
+      чотирирегістровий автоматичний стек (<span class="reg">X</span>, <span class="reg">Y</span>,
+      <span class="reg">Z</span>, <span class="reg">T</span>) плюс допоміжний регістр попереднього
+      аргументу <span class="reg">X1</span>. Клавіші <code>=</code> та дужок немає — кожна операція
+      виконується одразу над числами у вершині стека.</p>
+
+      <table>
+        <tr>
+          <th>Дія / Клавіша</th>
+          <th>Як змінюються регістри стека</th>
+          <th>Особливості автопідняття стека</th>
+        </tr>
+        <tr>
+          <td>Натискання <span class="kop">В↑</span></td>
+          <td><span class="reg">T</span> ← <span class="reg">Z</span> ← <span class="reg">Y</span> ← <span class="reg">X</span>
+              (у <span class="reg">X</span> та <span class="reg">Y</span> опиняється одне й те саме число)</td>
+          <td>Наступне введене з клавіатури число <b>заміщує</b> <span class="reg">X</span> без повторного підйому стека.</td>
+        </tr>
+        <tr>
+          <td>Одномісна функція (<span class="ffn">sin</span>, <span class="ffn">√</span>, <span class="ffn">x²</span>, <span class="ffn">1/x</span>, <span class="kfn">[x]</span> тощо)</td>
+          <td>Старе значення <span class="reg">X</span> зберігається в <span class="reg">X1</span>;
+              результат записується в <span class="reg">X</span>. Регістри <span class="reg">Y</span>,
+              <span class="reg">Z</span>, <span class="reg">T</span> не змінюються.</td>
+          <td>Вмикає автопідняття: наступне введене число автоматично підніме стек.</td>
+        </tr>
+        <tr>
+          <td>Двомісна операція (<span class="kop">+</span>, <span class="kop">-</span>,
+              <span class="kop">×</span>, <span class="kop">÷</span>, <span class="ffn">xʸ</span>)</td>
+          <td>Старе значення <span class="reg">X</span> йде в <span class="reg">X1</span>;
+              результат операції над <span class="reg">Y</span> та <span class="reg">X</span>
+              записується в <span class="reg">X</span>. Стек опускається:
+              <span class="reg">Y</span> ← <span class="reg">Z</span>,
+              <span class="reg">Z</span> ← <span class="reg">T</span>, а в
+              <span class="reg">T</span> лишається те саме число: воно копіюється вниз.</td>
+          <td>Вмикає автопідняття стека для наступного числа.</td>
+        </tr>
+        <tr>
+          <td>Обмін <span class="kop">↔</span></td>
+          <td>Міняє місцями <span class="reg">X</span> ↔ <span class="reg">Y</span>
+              (<span class="reg">Z</span>, <span class="reg">T</span>, <span class="reg">X1</span> без змін).</td>
+          <td>Вмикає автопідняття стека.</td>
+        </tr>
+        <tr>
+          <td>Кільцевий зсув <span class="kf">F</span> <span class="kop">В↑</span> (<span class="ffn">В↻</span>)</td>
+          <td>Кільцеве прокручування стека вниз:
+              <span class="reg">X</span> → <span class="reg">T</span> → <span class="reg">Z</span> →
+              <span class="reg">Y</span> → <span class="reg">X</span>.</td>
+          <td>Дозволяє переглянути всі 4 регістри стека по колу.</td>
+        </tr>
+        <tr>
+          <td>Попередній результат <span class="kf">F</span> <span class="kop">+</span> (<span class="ffn">Вх</span>)</td>
+          <td>Піднімає стек (якщо автопідняття активне) і копіює вміст <span class="reg">X1</span> у <span class="reg">X</span>.</td>
+          <td>Зручно для виправлення помилок і повторного використання аргументу.</td>
+        </tr>
+      </table>
+
+      <div class="note">
+        <b>Приклади обчислень у стеку ОПЗ:</b><br>
+        • <b>Обчислити <code>(2 + 3) × (7 - 4) = 15</code></b>:<br>
+          <span class="knum">2</span> <span class="kop">В↑</span> <span class="knum">3</span>
+          <span class="kop">+</span> (у <span class="reg">X</span> = <span class="vfd">5.</span>) →
+          <span class="knum">7</span> <span class="kop">В↑</span> <span class="knum">4</span>
+          <span class="kop">-</span> (у <span class="reg">Y</span> = <span class="vfd">5.</span>,
+          у <span class="reg">X</span> = <span class="vfd">3.</span>) →
+          <span class="kop">×</span> → результат <span class="vfd">15.</span><br>
+        • <b>Розмноження константи через регістр <span class="reg">T</span></b>:
+          якщо заповнити стек константою <code>c</code> (<span class="knum">c</span>
+          <span class="kop">В↑</span> <span class="kop">В↑</span> <span class="kop">В↑</span>),
+          то при кожній бінарній операції значення з <span class="reg">T</span> буде автоматично
+          тиражуватися вниз у стек!
+      </div>
+
+      <h2>4. Повний довідник математичних, кутових і логічних операцій</h2>
+
+      <h3>4.1. Степеневі, показнимі, логарифмічні та тригонометричні функції (префікс F)</h3>
+      <table>
+        <tr>
+          <th>Натискання клавіш</th>
+          <th>Позначення</th>
+          <th>Код</th>
+          <th>Формула та особливості виконання</th>
+        </tr>
+        <tr>
+          <td><span class="kf">F</span> <span class="knum">.</span></td>
+          <td><span class="ffn">π</span></td>
+          <td><span class="vfd">20</span></td>
+          <td>Заносить у стек <span class="reg">X</span> константу <b>π = 3.1415926</b> (піднімаючи стек).</td>
+        </tr>
+        <tr>
+          <td><span class="kf">F</span> <span class="kop">-</span></td>
+          <td><span class="ffn">√</span></td>
+          <td><span class="vfd">21</span></td>
+          <td>Квадратний корінь <b>√X</b> (при <span class="reg">X</span> &lt; 0 видає <span class="vfd">ЕГГОГ</span>).</td>
+        </tr>
+        <tr>
+          <td><span class="kf">F</span> <span class="kop">×</span></td>
+          <td><span class="ffn">x²</span></td>
+          <td><span class="vfd">22</span></td>
+          <td>Піднесення до квадрата <b>X²</b>.</td>
+        </tr>
+        <tr>
+          <td><span class="kf">F</span> <span class="kop">÷</span></td>
+          <td><span class="ffn">1/x</span></td>
+          <td><span class="vfd">23</span></td>
+          <td>Обернена величина <b>1 / X</b> (при <span class="reg">X</span> = 0 видає <span class="vfd">ЕГГОГ</span>).</td>
+        </tr>
+        <tr>
+          <td><span class="kf">F</span> <span class="kop">↔</span></td>
+          <td><span class="ffn">xʸ</span></td>
+          <td><span class="vfd">24</span></td>
+          <td>Піднесення до степеня <b>Y<sup>X</sup></b>: основа в <span class="reg">Y</span>, показник у <span class="reg">X</span>.<br>
+              <i>Приклад 2¹⁰ = 1024</i>: <span class="knum">2</span> <span class="kop">В↑</span> <span class="knum">1</span> <span class="knum">0</span> <span class="kf">F</span> <span class="kop">↔</span>. (При <span class="reg">Y</span> ≤ 0 видає <span class="vfd">ЕГГОГ</span>).</td>
+        </tr>
+        <tr>
+          <td><span class="kf">F</span> <span class="knum">0</span> / <span class="kf">F</span> <span class="knum">1</span></td>
+          <td><span class="ffn">10ˣ</span> / <span class="ffn">eˣ</span></td>
+          <td><span class="vfd">15</span> / <span class="vfd">16</span></td>
+          <td>Десяткова експонента <b>10<sup>X</sup></b> та натуральна експонента <b>e<sup>X</sup></b>.</td>
+        </tr>
+        <tr>
+          <td><span class="kf">F</span> <span class="knum">2</span> / <span class="kf">F</span> <span class="knum">3</span></td>
+          <td><span class="ffn">lg</span> / <span class="ffn">ln</span></td>
+          <td><span class="vfd">17</span> / <span class="vfd">18</span></td>
+          <td>Десятковий логарифм <b>lg(X)</b> та натуральний логарифм <b>ln(X)</b> (при <span class="reg">X</span> ≤ 0 — <span class="vfd">ЕГГОГ</span>).</td>
+        </tr>
+        <tr>
+          <td><span class="kf">F</span> <span class="knum">7</span> / <span class="knum">8</span> / <span class="knum">9</span></td>
+          <td><span class="ffn">sin</span> / <span class="ffn">cos</span> / <span class="ffn">tg</span></td>
+          <td><span class="vfd">1C</span> / <span class="vfd">1D</span> / <span class="vfd">1E</span></td>
+          <td>Тригонометричні функції кута <span class="reg">X</span> згідно з перемикачем <b>Р / ГРД / Г</b>.</td>
+        </tr>
+        <tr>
+          <td><span class="kf">F</span> <span class="knum">4</span> / <span class="knum">5</span> / <span class="knum">6</span></td>
+          <td><span class="ffn">sin⁻¹</span> / <span class="ffn">cos⁻¹</span> / <span class="ffn">tg⁻¹</span></td>
+          <td><span class="vfd">19</span> / <span class="vfd">1A</span> / <span class="vfd">1B</span></td>
+          <td>Арксинус, арккосинус (при |<span class="reg">X</span>| &gt; 1 — <span class="vfd">ЕГГОГ</span>) та арктангенс; результат у вибраній мірі кутів.</td>
+        </tr>
+      </table>
+
+      <h3>4.2. Спеціальні функції, переведення кутів і часу та побітова логіка (префікс К)</h3>
+      <table>
+        <tr>
+          <th>Натискання клавіш</th>
+          <th>Позначення</th>
+          <th>Код</th>
+          <th>Опис операції та формат даних</th>
+        </tr>
+        <tr>
+          <td><span class="kk">К</span> <span class="knum">7</span> / <span class="kk">К</span> <span class="knum">8</span></td>
+          <td><span class="kfn">[x]</span> / <span class="kfn">{x}</span></td>
+          <td><span class="vfd">34</span> / <span class="vfd">35</span></td>
+          <td>Виділення цілої частини числа <b>[X]</b> (напр. <code>-3.7 → -3.</code>) та дробової частини <b>{X}</b> (<code>-3.7 → -0.7</code>).</td>
+        </tr>
+        <tr>
+          <td><span class="kk">К</span> <span class="knum">4</span> / <span class="kk">К</span> <span class="knum">5</span></td>
+          <td><span class="kfn">|x|</span> / <span class="kfn">ЗН</span></td>
+          <td><span class="vfd">31</span> / <span class="vfd">32</span></td>
+          <td>Модуль числа <b>|X|</b> та знак числа <b>sign(X)</b> (повертає <code>-1</code>, <code>0</code> або <code>1</code>).</td>
+        </tr>
+        <tr>
+          <td><span class="kk">К</span> <span class="knum">9</span></td>
+          <td><span class="kfn">max</span></td>
+          <td><span class="vfd">36</span></td>
+          <td>Вибирає більше зі значень <span class="reg">X</span> та <span class="reg">Y</span> і записує в <span class="reg">X</span>. Стек при цьому не опускається, <span class="reg">Y</span> лишається.</td>
+        </tr>
+        <tr>
+          <td><span class="kk">К</span> <span class="knum">6</span></td>
+          <td><span class="kfn">° ′</span> (Г→М)</td>
+          <td><span class="vfd">33</span></td>
+          <td>Переведення градусів (годин) із десятковими частками (<code>ГГ.гггг</code>) у градуси, мінути й частки мінути (<code>ГГ.ММмм</code>).</td>
+        </tr>
+        <tr>
+          <td><span class="kk">К</span> <span class="kop">+</span></td>
+          <td><span class="kfn">° ′</span> (М→Г)</td>
+          <td><span class="vfd">26</span></td>
+          <td>Переведення градусів і мінут (<code>ГГ.ММмм</code>) у десяткові частки градуса (<code>ГГ.гггг</code>). При мінутах ≥ 60 — <span class="vfd">ЕГГОГ</span>.</td>
+        </tr>
+        <tr>
+          <td><span class="kk">К</span> <span class="knum">3</span></td>
+          <td><span class="kfn">° ′ ″</span> (Г→МС)</td>
+          <td><span class="vfd">30</span></td>
+          <td>Переведення десяткових часток градуса (<code>ГГ.гггг</code>) у градуси, мінути й секунди (<code>ГГ.ММССс</code>).</td>
+        </tr>
+        <tr>
+          <td><span class="kk">К</span> <span class="kop">↔</span></td>
+          <td><span class="kfn">° ′ ″</span> (МС→Г)</td>
+          <td><span class="vfd">2A</span></td>
+          <td>Переведення градусів, мінут і секунд (<code>ГГ.ММССс</code>) у десяткові частки градуса (<code>ГГ.гггг</code>). При мінутах чи секундах ≥ 60 — <span class="vfd">ЕГГОГ</span>.</td>
+        </tr>
+        <tr>
+          <td><span class="kk">К</span> <span class="kop">В↑</span></td>
+          <td><span class="kfn">СЧ</span></td>
+          <td><span class="vfd">3B</span></td>
+          <td>Генератор псевдовипадкового числа в діапазоні <b>[0; 1)</b> (після ввімкнення перше число — <span class="vfd">0.404067</span>).</td>
+        </tr>
+        <tr>
+          <td><span class="kk">К</span> <span class="knum">0</span></td>
+          <td><span class="kfn">НОП</span></td>
+          <td><span class="vfd">54</span></td>
+          <td>Порожня операція («Немає операції»); коди <span class="vfd">55</span> (<span class="kk">К</span> <span class="knum">1</span>) і <span class="vfd">56</span> (<span class="kk">К</span> <span class="knum">2</span>) діють аналогічно.</td>
+        </tr>
+        <tr>
+          <td><span class="kk">К</span> <span class="knum">.</span> / <span class="knum">/-/</span> / <span class="knum">ВП</span> / <span class="kcx">Сх</span></td>
+          <td><span class="kfn">∧</span> / <span class="kfn">∨</span> / <span class="kfn">⊕</span> / <span class="kfn">инв</span></td>
+          <td><span class="vfd">37</span>..<span class="vfd">3A</span></td>
+          <td>Порозрядні логічні операції <b>І (AND)</b>, <b>АБО (OR)</b>, <b>Виключне АБО (XOR)</b> та унарна <b>Інверсія (NOT)</b> над 7 шістнадцятковими тетрадами мантиси у форматі <span class="vfd">8.xxxxxxx</span>.<br>
+              Шістнадцяткові цифри 10..15 на ВЛІ: <code>10(A)</code>=<span class="vfd">-</span>, <code>11(B)</code>=<span class="vfd">L</span>, <code>12(C)</code>=<span class="vfd">C</span>, <code>13(D)</code>=<span class="vfd">Г</span>, <code>14(E)</code>=<span class="vfd">E</span>, <code>15(F)</code>=пробіл.<br>
+              <i>Приклад</i>: <span class="knum">123456</span> <span class="kk">К</span> <span class="kcx">Сх</span> (<span class="kfn">инв</span>) → <span class="vfd">8.ГCL-9 &nbsp;</span>.</td>
+        </tr>
+      </table>
+
+      <h2>5. Регістри пам'яті (R0..R9, RA..RE)</h2>
+      <p>Калькулятор має <b>15 незалежних адресних регістрів пам'яті</b>: десять цифрових
+      (<span class="reg">R0</span>..<span class="reg">R9</span>) та п'ять буквених
+      (<span class="reg">RA</span>..<span class="reg">RE</span>), позначених червоними літерами під
+      нижнім рядом клавіш:</p>
+      <ul>
+        <li><span class="knum">.</span> — регістр <span class="reg">a</span> (<span class="reg">RA</span>, на ВЛІ відображається як <span class="vfd">-</span>);</li>
+        <li><span class="knum">/-/</span> — регістр <span class="reg">b</span> (<span class="reg">RB</span>, на ВЛІ <span class="vfd">L</span>);</li>
+        <li><span class="knum">ВП</span> — регістр <span class="reg">c</span> (<span class="reg">RC</span>, на ВЛІ <span class="vfd">C</span>);</li>
+        <li><span class="kcx">Сх</span> — регістр <span class="reg">d</span> (<span class="reg">RD</span>, на ВЛІ <span class="vfd">Г</span>);</li>
+        <li><span class="kop">В↑</span> — регістр <span class="reg">e</span> (<span class="reg">RE</span>, на ВЛІ <span class="vfd">E</span>).</li>
+      </ul>
+      <p><b>Прямий запис у пам'ять</b>: натисніть <span class="kop">Х→П</span> (у літературі також
+      позначається <code>П</code>) та клавішу номера регістра (коди <span class="vfd">40</span>..<span class="vfd">4E</span>). Число в <span class="reg">X</span> зберігається.</p>
+      <p><b>Пряме читання з пам'яті</b>: натисніть <span class="kop">П→Х</span> (у літературі
+      <code>ИП</code>) та клавішу номера регістра (коди <span class="vfd">60</span>..<span class="vfd">6E</span>). Якщо автопідняття стека активне, стек попередньо піднімається; проте якщо перед <span class="kop">П→Х</span> було натиснуто <span class="kop">В↑</span>, стек вдруге <b>не піднімається</b>.</p>
+
+      <h2>6. Програмування (ПРГ), умовні переходи, цикли та непряма адресація</h2>
+      <ul>
+        <li>Пам'ять програм вміщує <b>105 кроків</b> із адресами від <span class="vfd">00</span> до
+            <span class="vfd">99</span> та від <span class="vfd">-0</span> (крок 100) до
+            <span class="vfd">-4</span> (крок 104). Після виконання кроку 104 лічильник команд
+            <code>PC</code> автоматично переходить на <span class="vfd">00</span>.</li>
+        <li>У режимі <span class="ffn">ПРГ</span> праворуч на індикаторі виводиться поточна адреса
+            кроку <code>PC</code>, а ліворуч — коди трьох попередніх записаних кроків
+            (<code>[PC-1] [PC-2] [PC-3]</code>). Переміщення по кроках у режимі <span class="ffn">ПРГ</span>
+            здійснюється клавішами <span class="kop">ШГ→</span> (вперед) та <span class="kop">←ШГ</span> (назад).</li>
+        <li>Команди переходів <span class="kop">БП</span>, <span class="kop">ПП</span>, умовні
+            переходи <span class="kf">F</span> <span class="ffn">x...</span> та цикли
+            <span class="kf">F</span> <span class="ffn">L0..L3</span> займають у пам'яті
+            <b>2 кроки (2 байти)</b>: перший крок — код самої операції, другий крок — двозначна адреса
+            переходу (для переходів на кроки 100..104 першою цифрою адреси натискається
+            <span class="knum">.</span> (<span class="reg">a</span>), а другою — <span class="knum">0</span>..<span class="knum">4</span>).</li>
+      </ul>
+
+      <div class="warn">
+        <b>Умовний перехід тут працює навпаки, ніж у звичних мовах.</b><br>
+        На Б3-34 і МК-61 команда дивиться на регістр <span class="reg">X</span> і робить так:
+        <ul>
+          <li>умова істинна — переходу немає, виконується команда одразу за адресою (<code>PC + 2</code>);</li>
+          <li>умова хибна — стрибок на вказану адресу.</li>
+        </ul>
+        Тобто гілка «якщо так» пишеться слідом за командою, а «якщо ні» — за адресою.
+      </div>
+
+      <table>
+        <tr>
+          <th>Комбінація клавіш</th>
+          <th>Мнемоніка</th>
+          <th>Код</th>
+          <th>Коли продовжує далі (PC+2)</th>
+          <th>Коли стрибає на адресу XX</th>
+        </tr>
+        <tr>
+          <td><span class="kf">F</span> <span class="kop">ШГ→</span> + адреса</td>
+          <td><span class="ffn">F x&lt;0</span></td>
+          <td><span class="vfd">5C XX</span></td>
+          <td>Якщо <span class="reg">X</span> &lt; 0</td>
+          <td>Якщо <span class="reg">X</span> ≥ 0 (умова x&lt;0 хибна)</td>
+        </tr>
+        <tr>
+          <td><span class="kf">F</span> <span class="kop">←ШГ</span> + адреса</td>
+          <td><span class="ffn">F x=0</span></td>
+          <td><span class="vfd">5E XX</span></td>
+          <td>Якщо <span class="reg">X</span> = 0</td>
+          <td>Якщо <span class="reg">X</span> ≠ 0 (умова x=0 хибна)</td>
+        </tr>
+        <tr>
+          <td><span class="kf">F</span> <span class="kop">В/О</span> + адреса</td>
+          <td><span class="ffn">F x≥0</span></td>
+          <td><span class="vfd">59 XX</span></td>
+          <td>Якщо <span class="reg">X</span> ≥ 0</td>
+          <td>Якщо <span class="reg">X</span> &lt; 0 (умова x≥0 хибна)</td>
+        </tr>
+        <tr>
+          <td><span class="kf">F</span> <span class="kop">С/П</span> + адреса</td>
+          <td><span class="ffn">F x≠0</span></td>
+          <td><span class="vfd">57 XX</span></td>
+          <td>Якщо <span class="reg">X</span> ≠ 0</td>
+          <td>Якщо <span class="reg">X</span> = 0 (умова x≠0 хибна)</td>
+        </tr>
+      </table>
+
+      <h3>6.1. Організація циклів (F L0, F L1, F L2, F L3) та підпрограм (ПП / В/О)</h3>
+      <ul>
+        <li><b>Цикли</b>:
+            <span class="kf">F</span> <span class="kop">П→Х</span> (<span class="ffn">L0</span>, код <span class="vfd">5D</span> — регістр <span class="reg">R0</span>),
+            <span class="kf">F</span> <span class="kop">Х→П</span> (<span class="ffn">L1</span>, код <span class="vfd">5B</span> — регістр <span class="reg">R1</span>),
+            <span class="kf">F</span> <span class="kop">БП</span> (<span class="ffn">L2</span>, код <span class="vfd">58</span> — регістр <span class="reg">R2</span>),
+            <span class="kf">F</span> <span class="kop">ПП</span> (<span class="ffn">L3</span>, код <span class="vfd">5A</span> — регістр <span class="reg">R3</span>).
+            При виконанні ціла частина відповідного регістра (<span class="reg">R0</span>..<span class="reg">R3</span>)
+            <b>зменшується на 1</b>; якщо нове значення <b>&gt; 0</b>, відбувається перехід на вказану адресу початку циклу, інакше цикл завершується.</li>
+        <li><b>Підпрограми</b>: команда <span class="kop">ПП</span> <code>XX</code> (код <span class="vfd">53 XX</span>)
+            запам'ятовує адресу повернення у спеціальному стеку повернень (глибина — до <b>5 рівнів вкладеності</b>)
+            та передає керування на адресу <code>XX</code>. Команда <span class="kop">В/О</span> (код <span class="vfd">52</span>)
+            повертає керування на збережену адресу (а якщо стек повернень порожній — встановлює <code>PC = 00</code>).</li>
+      </ul>
+
+      <h3>6.2. Непряма адресація (префікс К) та автоінкремент/автодекремент</h3>
+      <p>Якщо перед командами пам'яті або переходів натиснути синю клавішу <span class="kk">К</span>,
+      а потім указати регістр-вказівник <code>n</code> (<span class="reg">0</span>..<span class="reg">E</span>),
+      то номер цільового регістра або адреса переходу береться з <b>цілої частини вмісту регістра <code>Rn</code></b>
+      (займає <b>1 крок</b> у пам'яті програм):</p>
+      <ul>
+        <li><b>Регістри <span class="reg">R0</span>, <span class="reg">R1</span>, <span class="reg">R2</span>, <span class="reg">R3</span> (Автодекремент)</b>:
+            ціла частина регістра <b>спочатку зменшується на 1</b>, а вже потім нове значення використовується як адреса або номер регістра!</li>
+        <li><b>Регістри <span class="reg">R4</span>, <span class="reg">R5</span>, <span class="reg">R6</span> (Автоінкремент)</b>:
+            ціла частина регістра <b>спочатку збільшується на 1</b>, а потім використовується як адреса або номер регістра!
+            <i>(Прийом: команда <code>КИП4</code> часто використовується програмістами просто для збільшення лічильника в <span class="reg">R4</span> на 1 за один крок програми).</i></li>
+        <li><b>Регістри <span class="reg">R7</span>..<span class="reg">RE</span></b>: свого значення при непрямій адресації не змінюють.</li>
+      </ul>
+
+      <h2>7. Зведена таблиця всіх кодів команд МК-61 (00..EE)</h2>
+      <table>
+        <tr>
+          <th>Діапазон кодів</th>
+          <th>Мнемоніка / Клавіші</th>
+          <th>Кроків</th>
+          <th>Призначення</th>
+        </tr>
+        <tr>
+          <td><span class="vfd">00</span> – <span class="vfd">09</span></td>
+          <td><span class="knum">0</span> – <span class="knum">9</span></td>
+          <td>1</td>
+          <td>Введення цифр від 0 до 9</td>
+        </tr>
+        <tr>
+          <td><span class="vfd">0A</span>.. <span class="vfd">0E</span></td>
+          <td><span class="knum">.</span> (<span class="vfd">0-</span>), <span class="knum">/-/</span> (<span class="vfd">0L</span>), <span class="knum">ВП</span> (<span class="vfd">0C</span>), <span class="kcx">Сх</span> (<span class="vfd">0Г</span>), <span class="kop">В↑</span> (<span class="vfd">0E</span>)</td>
+          <td>1</td>
+          <td>Крапка, зміна знака, введення порядку, скидання X, підйом стека</td>
+        </tr>
+        <tr>
+          <td><span class="vfd">0F</span></td>
+          <td><span class="kf">F</span> <span class="ffn">Вх</span> (<span class="vfd">0 </span>)</td>
+          <td>1</td>
+          <td>Виклик попереднього значення з регістра <span class="reg">X1</span> у <span class="reg">X</span></td>
+        </tr>
+        <tr>
+          <td><span class="vfd">10</span> – <span class="vfd">14</span></td>
+          <td><span class="kop">+</span>, <span class="kop">-</span>, <span class="kop">×</span>, <span class="kop">÷</span>, <span class="kop">↔</span></td>
+          <td>1</td>
+          <td>Арифметичні операції над <span class="reg">Y</span> та <span class="reg">X</span> і обмін <span class="reg">X</span> ↔ <span class="reg">Y</span></td>
+        </tr>
+        <tr>
+          <td><span class="vfd">15</span> – <span class="vfd">1E</span></td>
+          <td><span class="ffn">10ˣ</span>, <span class="ffn">eˣ</span>, <span class="ffn">lg</span>, <span class="ffn">ln</span>, <span class="ffn">arcsin</span>, <span class="ffn">arccos</span>, <span class="ffn">arctg</span>, <span class="ffn">sin</span>, <span class="ffn">cos</span>, <span class="ffn">tg</span></td>
+          <td>1</td>
+          <td>Показникові, логарифмічні та тригонометричні функції (<span class="kf">F</span> + <span class="knum">0</span>..<span class="knum">9</span>)</td>
+        </tr>
+        <tr>
+          <td><span class="vfd">20</span> – <span class="vfd">25</span></td>
+          <td><span class="ffn">π</span>, <span class="ffn">√</span>, <span class="ffn">x²</span>, <span class="ffn">1/x</span>, <span class="ffn">xʸ</span>, <span class="ffn">В↻</span></td>
+          <td>1</td>
+          <td>Константа π, корінь, квадрат, 1/x, степінь Y<sup>X</sup>, кільцевий зсув стека</td>
+        </tr>
+        <tr>
+          <td><span class="vfd">26</span>, <span class="vfd">2A</span>, <span class="vfd">30</span>, <span class="vfd">33</span></td>
+          <td><span class="kfn">К М→Г</span>, <span class="kfn">К МС→Г</span>, <span class="kfn">К Г→МС</span>, <span class="kfn">К Г→М</span></td>
+          <td>1</td>
+          <td>Переведення кутових і часових величин (градуси, мінути, секунди)</td>
+        </tr>
+        <tr>
+          <td><span class="vfd">31</span>, <span class="vfd">32</span>, <span class="vfd">34</span>–<span class="vfd">36</span></td>
+          <td><span class="kfn">К |x|</span>, <span class="kfn">К ЗН</span>, <span class="kfn">К [x]</span>, <span class="kfn">К {x}</span>, <span class="kfn">К max</span></td>
+          <td>1</td>
+          <td>Модуль, знак, ціла частина, дробова частина, максимум із X і Y</td>
+        </tr>
+        <tr>
+          <td><span class="vfd">37</span> – <span class="vfd">3B</span></td>
+          <td><span class="kfn">К ∧</span>, <span class="kfn">К ∨</span>, <span class="kfn">К ⊕</span>, <span class="kfn">К инв</span>, <span class="kfn">К СЧ</span></td>
+          <td>1</td>
+          <td>Побітові логічні операції у форматі <span class="vfd">8.xxxxxxx</span> та випадкове число [0; 1)</td>
+        </tr>
+        <tr>
+          <td><span class="vfd">40</span> – <span class="vfd">4E</span></td>
+          <td><span class="kop">Х→П</span> <code>0..E</code> (<code>П0..ПE</code>)</td>
+          <td>1</td>
+          <td>Прямий запис числа з <span class="reg">X</span> у регістр пам'яті <span class="reg">R0</span>..<span class="reg">RE</span></td>
+        </tr>
+        <tr>
+          <td><span class="vfd">50</span>, <span class="vfd">52</span>, <span class="vfd">54</span></td>
+          <td><span class="kop">С/П</span>, <span class="kop">В/О</span>, <span class="kfn">К НОП</span></td>
+          <td>1</td>
+          <td>Зупинка/пуск програми, повернення з підпрограми, порожня операція</td>
+        </tr>
+        <tr>
+          <td><span class="vfd">51</span>, <span class="vfd">53</span></td>
+          <td><span class="kop">БП</span> <code>XX</code>, <span class="kop">ПП</span> <code>XX</code></td>
+          <td>2</td>
+          <td>Безумовний перехід на адресу <code>XX</code> та виклик підпрограми за адресою <code>XX</code></td>
+        </tr>
+        <tr>
+          <td><span class="vfd">57</span>, <span class="vfd">59</span>, <span class="vfd">5C</span>, <span class="vfd">5E</span></td>
+          <td><span class="ffn">F x≠0</span>, <span class="ffn">F x≥0</span>, <span class="ffn">F x&lt;0</span>, <span class="ffn">F x=0</span> + <code>XX</code></td>
+          <td>2</td>
+          <td>Умовні переходи (стрибок на <code>XX</code>, якщо умова НЕ виконується)</td>
+        </tr>
+        <tr>
+          <td><span class="vfd">58</span>, <span class="vfd">5A</span>, <span class="vfd">5B</span>, <span class="vfd">5D</span></td>
+          <td><span class="ffn">F L2</span>, <span class="ffn">F L3</span>, <span class="ffn">F L1</span>, <span class="ffn">F L0</span> + <code>XX</code></td>
+          <td>2</td>
+          <td>Цикли з декрементом регістрів <span class="reg">R2</span>, <span class="reg">R3</span>, <span class="reg">R1</span>, <span class="reg">R0</span> (стрибок на <code>XX</code>, доки R &gt; 0)</td>
+        </tr>
+        <tr>
+          <td><span class="vfd">60</span> – <span class="vfd">6E</span></td>
+          <td><span class="kop">П→Х</span> <code>0..E</code> (<code>ИП0..ИПE</code>)</td>
+          <td>1</td>
+          <td>Пряме читання числа з регістра пам'яті <span class="reg">R0</span>..<span class="reg">RE</span> у регістр <span class="reg">X</span></td>
+        </tr>
+        <tr>
+          <td><span class="vfd">70</span>–<span class="vfd">7E</span>, <span class="vfd">90</span>–<span class="vfd">9E</span>, <span class="vfd">C0</span>–<span class="vfd">CE</span>, <span class="vfd">E0</span>–<span class="vfd">EE</span></td>
+          <td><span class="kfn">К x≠0</span>, <span class="kfn">К x≥0</span>, <span class="kfn">К x&lt;0</span>, <span class="kfn">К x=0</span> <code>0..E</code></td>
+          <td>1</td>
+          <td>Непрямі умовні переходи за адресою в регістрі <span class="reg">R0</span>..<span class="reg">RE</span></td>
+        </tr>
+        <tr>
+          <td><span class="vfd">80</span>–<span class="vfd">8E</span>, <span class="vfd">A0</span>–<span class="vfd">AE</span></td>
+          <td><span class="kfn">К БП</span> <code>0..E</code>, <span class="kfn">К ПП</span> <code>0..E</code></td>
+          <td>1</td>
+          <td>Непрямий безумовний перехід та непрямий виклик підпрограми за регістром</td>
+        </tr>
+        <tr>
+          <td><span class="vfd">B0</span>–<span class="vfd">BE</span>, <span class="vfd">D0</span>–<span class="vfd">DE</span></td>
+          <td><span class="kfn">К Х→П</span> <code>0..E</code> (<code>КП</code>), <span class="kfn">К П→Х</span> <code>0..E</code> (<code>КИП</code>)</td>
+          <td>1</td>
+          <td>Непрямий запис у пам'ять та непряме читання з пам'яті за регістром</td>
+        </tr>
+      </table>
+
+      <h2>8. Крок, автокрок і точки зупину</h2>
+      <ul>
+        <li>Один крок — кнопка <span class="kk">⏭ Крок (F10)</span> або <span class="kop">ШГ→</span>
+            в режимі <span class="ffn">АВТ</span>.</li>
+        <li>Автокрок — <span class="kop">▶ Автокрок (F5)</span>. Швидкість: 3, 10, 25 або 100 кроків/с.
+            25 кроків/с близькі до живого МК-61.</li>
+        <li>Точка зупину (<code>●</code>) — подвійний клік по кроку у вкладці пам'яті або
+            <span class="kop">● Точка зупину (F9)</span> на поточному PC. І звичайний пуск, і автокрок
+            на ній зупиняються.</li>
+        <li>Лишити на екрані тільки корпус — <span class="kop">◀ Тільки МК-61</span> або
+            <span class="knum">F12</span>.</li>
+      </ul>
+      <p>Програма поширюється під GPL-3.0. Qt і шрифт індикатора згадані у вікні «Про».</p>
+
+      </body>
+      </html>
     )"));
     return browser;
+  }
+
+  void showAbout() {
+    QMessageBox box(this);
+    box.setWindowTitle(QStringLiteral("Про програму"));
+    box.setTextFormat(Qt::RichText);
+    box.setText(
+      QStringLiteral(
+        "<p><b>Електроніка МК-61</b>, емулятор %1</p>"
+        "<p>Стек, регістри, 105 кроків і клавіші як на «Електроніці МК-61». "
+        "Програма під GNU GPL версії 3. Повний текст — у файлі LICENSE.</p>"
+        "<p>Вікно зібрано на Qt %2 (The Qt Company). Qt іде під LGPL-3.0 або GPL-3.0, "
+        "залежно від збірки, якою користувалися. Кнопка нижче відкриває їхнє вікно.</p>"
+        "<p>Цифри на індикаторі малює шрифт MK61 VFD з цього ж проєкту, теж під GPL-3.0.</p>")
+        .arg(QStringLiteral(MK61EMU_VERSION), QString::fromUtf8(qVersion())));
+    auto *qt_btn = box.addButton(QStringLiteral("Про Qt…"), QMessageBox::ActionRole);
+    box.addButton(QMessageBox::Ok);
+    box.exec();
+    if (box.clickedButton() == qt_btn) {
+      QMessageBox::aboutQt(this, QStringLiteral("Qt"));
+    }
   }
 
   void triggerKey(Key key) {
@@ -1451,6 +2119,10 @@ private:
 
 int main(int argc, char *argv[]) {
   QApplication app(argc, argv);
+  QApplication::setApplicationName(QStringLiteral("mk61emu"));
+  QApplication::setApplicationDisplayName(QStringLiteral("Електроніка МК-61"));
+  QApplication::setApplicationVersion(QStringLiteral(MK61EMU_VERSION));
+  QGuiApplication::setDesktopFileName(QStringLiteral("mk61emu"));
 
   QFont vfd_font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
   const int font_id =

@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=МК-61
+Name[en]=MK-61
+GenericName=Емулятор мікрокалькулятора
+GenericName[en]=Calculator emulator
+Comment=Програмований мікрокалькулятор «Електроніка МК-61»
+Exec=mk61emu-gui
+Icon=mk61emu
+Terminal=false
+StartupNotify=true
+StartupWMClass=mk61emu
+Categories=Education;Science;Qt;
+Keywords=калькулятор;МК-61;ПМК;ОПЗ;

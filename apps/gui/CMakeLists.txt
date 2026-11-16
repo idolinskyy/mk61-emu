@@ -21,3 +21,4 @@ target_link_libraries(gui_app PRIVATE
     Project::StrictWarnings
 )
 set_target_properties(gui_app PROPERTIES OUTPUT_NAME "mk61emu-gui")
+target_compile_definitions(gui_app PRIVATE "MK61EMU_VERSION=\"${PROJECT_VERSION}\"")
