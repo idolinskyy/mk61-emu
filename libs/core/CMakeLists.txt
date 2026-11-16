@@ -1,4 +1,8 @@
-add_library(core_lib src/greeter.cpp)
+add_library(core_lib
+    src/opcodes.cpp
+    src/calculator.cpp
+    src/presets.cpp
+)
 
 add_library(mk61emu::Core ALIAS core_lib)
 

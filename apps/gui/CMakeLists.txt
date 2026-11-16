@@ -1,6 +1,9 @@
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
-qt_add_executable(gui_app src/main.cpp)
+qt_add_executable(gui_app
+    src/main.cpp
+    resources/resources.qrc
+)
 
 set_target_properties(gui_app PROPERTIES
     AUTOMOC ON

@@ -16,13 +16,13 @@ foreach(catch_target IN ITEMS Catch2 Catch2WithMain)
     endif()
 endforeach()
 
-add_executable(unit_tests test_greeter.cpp)
+add_executable(unit_tests test_calculator.cpp)
 
 target_link_libraries(unit_tests PRIVATE
     mk61emu::Core
     Project::Options
     Catch2::Catch2WithMain
-    Project::Warnings        # Підключаємо тільки базові, без StrictWarnings
+    Project::Warnings
 )
 
 include(Catch)
