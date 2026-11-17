@@ -27,3 +27,9 @@ target_link_libraries(unit_tests PRIVATE
 
 include(Catch)
 catch_discover_tests(unit_tests)
+
+if(TARGET gui_app)
+    add_test(NAME gui_keys COMMAND gui_app --self-test)
+    set_tests_properties(gui_keys PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()

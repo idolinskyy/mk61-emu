@@ -19,6 +19,9 @@ struct RegisterValue {
   double numeric{0.0};
   bool is_logical{false};
   std::array<std::uint8_t, 8> nibbles{0, 0, 0, 0, 0, 0, 0, 0};
+  // Скільки знаків після крапки лишити, навіть якщо там нулі.
+  // Для градусів і мінут 12.30 інакше зливалося б із 12.3, а 45.00 — із 45.
+  int min_fraction_digits{0};
 
   constexpr RegisterValue() noexcept = default;
   // NOLINTNEXTLINE(google-explicit-constructor)

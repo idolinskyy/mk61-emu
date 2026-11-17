@@ -1,7 +1,11 @@
+#include "mk61_build_info.hpp"
+
 #include "core/calculator.hpp"
 #include "core/opcodes.hpp"
 #include "core/presets.hpp"
 #include "core/types.hpp"
+
+#include <clocale>
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -45,9 +49,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -535,6 +541,7 @@ private:
     vfd_layout->setSpacing(2);
 
     status_badge_label_ = new QLabel(vfd_frame);
+    status_badge_label_->setObjectName(QStringLiteral("mk61Status"));
     status_badge_label_->setFixedHeight(16);
     status_badge_label_->setStyleSheet(
       QStringLiteral("color: #2bbd7e; font-size: 11px; font-weight: bold;"));
@@ -546,7 +553,7 @@ private:
     about_btn->setCursor(Qt::PointingHandCursor);
     about_btn->setFocusPolicy(Qt::NoFocus);
     about_btn->setFixedHeight(16);
-    about_btn->setToolTip(QStringLiteral("Версія, ліцензія GPL, Qt і шрифт індикатора"));
+    about_btn->setToolTip(QStringLiteral("Версія, час збірки і ліцензія GPL"));
     about_btn->setStyleSheet(QStringLiteral(
       "QPushButton { background: transparent; color: #2bbd7e; border: 1px solid #1b5c3a; "
       "border-radius: 3px; font-size: 10px; padding: 0 5px; }"
@@ -556,6 +563,7 @@ private:
     vfd_layout->addLayout(badge_row);
 
     vfd_screen_ = new VfdScreenWidget(vfd_font_, vfd_frame);
+    vfd_screen_->setObjectName(QStringLiteral("mk61Vfd"));
     vfd_layout->addWidget(vfd_screen_);
     vbox->addWidget(vfd_frame);
 
@@ -667,6 +675,7 @@ private:
 
       // Сама кнопка фіксованої зручної висоти (36 px)
       auto *btn = new QPushButton(to_qstr(kinfo.primary_label), cell);
+      btn->setObjectName(QStringLiteral("mk61Key%1").arg(static_cast<int>(kinfo.key)));
       btn->setFixedHeight(36);
       btn->setCursor(Qt::PointingHandCursor);
       btn->setFocusPolicy(Qt::NoFocus);
@@ -773,12 +782,14 @@ private:
                             "Клавіатура ПК: 5");
     case Key::D6:
       return QStringLiteral("Цифра 6, або регістр R6.\n"
-                            "F — arctg. К — градуси з часткою у градуси і мінути.\n"
+                            "F — arctg. К °→′ — частки градуса у мінути: 12.5 стає 12.30.\n"
                             "Клавіатура ПК: 6");
     case Key::Plus:
-      return QStringLiteral("Додавання Y + X.\n"
-                            "F — повернути попереднє значення з X1. К — мінути у частки градуса.\n"
-                            "Клавіатура ПК: +");
+      return QStringLiteral(
+        "Додавання Y + X.\n"
+        "F — повернути попереднє значення з X1. К ′→° — мінути у частки градуса: "
+        "12.30 стає 12.5. Мінут 60 і більше — ЕГГОГ.\n"
+        "Клавіатура ПК: +");
     case Key::Multiply:
       return QStringLiteral("Множення.\n"
                             "F — квадрат. Синього напису немає.\n"
@@ -793,12 +804,15 @@ private:
                             "Клавіатура ПК: 2");
     case Key::D3:
       return QStringLiteral("Цифра 3, або регістр R3.\n"
-                            "F — натуральний логарифм. К — градуси у градуси, мінути і секунди.\n"
+                            "F — натуральний логарифм. К °→′″ — частки градуса у мінути і секунди: "
+                            "12.5125 стає 12.3045.\n"
                             "Клавіатура ПК: 3");
     case Key::Swap:
-      return QStringLiteral("Поміняти X і Y.\n"
-                            "F — Y у степені X. К — секунди назад у частки градуса.\n"
-                            "Клавіатура ПК: X");
+      return QStringLiteral(
+        "Поміняти X і Y.\n"
+        "F — степінь: основа в X, показник у Y. К ′″→° — мінути і секунди у частки "
+        "градуса: 12.3045 стає 12.5125.\n"
+        "Клавіатура ПК: X");
     case Key::Enter:
       return QStringLiteral("Підняти стек: X копіюється в Y.\n"
                             "F — прокрутити стек по колу. К — випадкове число: X замінюється, Y не "
@@ -906,6 +920,7 @@ private:
       name_lbl->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
 
       auto *val_lbl = new QLabel(QStringLiteral("0."), stack_group);
+      val_lbl->setObjectName(QStringLiteral("mk61Stack%1").arg(static_cast<int>(i)));
       val_lbl->setFont(vfd_small);
       val_lbl->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
       val_lbl->setStyleSheet(
@@ -1010,8 +1025,10 @@ private:
   QWidget *createDebuggerBar(QWidget *parent) {
     auto *bar =
       new QGroupBox(QStringLiteral("Відлагодження та покрокове виконання програм"), parent);
-    auto *hbox = new QHBoxLayout(bar);
-    hbox->setContentsMargins(8, 4, 8, 4);
+    auto *vbox = new QVBoxLayout(bar);
+    vbox->setContentsMargins(8, 4, 8, 4);
+    vbox->setSpacing(4);
+    auto *hbox = new QHBoxLayout();
     hbox->setSpacing(6);
 
     auto *step_btn = new QPushButton(QStringLiteral("⏭ Крок (F10)"), bar);
@@ -1049,6 +1066,7 @@ private:
     QObject::connect(bp_btn, &QPushButton::clicked, this, &Mk61MainWindow::toggleBreakpointAtPc);
 
     dbg_speed_combo_ = new QComboBox(bar);
+    dbg_speed_combo_->setObjectName(QStringLiteral("mk61Speed"));
     dbg_speed_combo_->addItem(QStringLiteral("Як на МК-61"), -1);
     dbg_speed_combo_->addItem(QStringLiteral("Повільно (3 кр/с)"), 330);
     dbg_speed_combo_->addItem(QStringLiteral("Середньо (10 кр/с)"), 100);
@@ -1074,14 +1092,18 @@ private:
 
     dbg_current_step_label_ = new QLabel(bar);
     dbg_current_step_label_->setStyleSheet(
-      QStringLiteral("color: #80cbc4; font-weight: bold; font-size: 12px; padding-left: 6px;"));
+      QStringLiteral("color: #80cbc4; font-weight: bold; font-size: 12px;"));
+    dbg_current_step_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    dbg_current_step_label_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 
     hbox->addWidget(step_btn);
     hbox->addWidget(dbg_play_btn_);
     hbox->addWidget(reset_pc_btn);
     hbox->addWidget(bp_btn);
     hbox->addWidget(dbg_speed_combo_);
-    hbox->addWidget(dbg_current_step_label_, 1);
+    hbox->addStretch(1);
+    vbox->addLayout(hbox);
+    vbox->addWidget(dbg_current_step_label_);
     return bar;
   }
 
@@ -1177,6 +1199,7 @@ private:
     vbox->addWidget(info_lbl);
 
     prog_table_ = new QTableWidget(0, 4, tab);
+    prog_table_->setObjectName(QStringLiteral("mk61Prog"));
     prog_table_->setHorizontalHeaderLabels({QStringLiteral("Крок"), QStringLiteral("Код на ВЛІ"),
                                             QStringLiteral("Мнемоніка"),
                                             QStringLiteral("Опис операції")});
@@ -1471,7 +1494,7 @@ private:
         <tr>
           <td><span class="kop">Х→П</span></td><td>S</td>
           <td>Далі регістр 0..9 або a..e. X записується туди і лишається на індикаторі.</td>
-          <td>Цикл L1: R1 зменшується на 1, поки більше нуля — стрибок на адресу.</td>
+          <td>Цикл L1: ціла частина R1 мінус 1, дріб лишається. Стрибок, доки ціла частина не нуль.</td>
           <td>Запис X у регістр, номер якого лежить в іншому регістрі.</td>
         </tr>
         <tr>
@@ -1538,13 +1561,13 @@ private:
           <td><span class="knum">6</span></td><td>6</td>
           <td>Цифра 6, або регістр R6.</td>
           <td>arctg</td>
-          <td>Градуси з часткою у градуси і мінути. 12.5 стає 12.30</td>
+          <td>°→′ частки градуса у мінути. 12.5 стає 12.30</td>
         </tr>
         <tr>
           <td><span class="kop">+</span></td><td>+</td>
           <td>Y плюс X.</td>
           <td>Повернути попереднє значення з X1. Стане в пригоді, якщо дію натиснули не ту.</td>
-          <td>Мінути назад у частки градуса. Мінут 60 і більше — ЕГГОГ.</td>
+          <td>′→° мінути у частки градуса. 12.30 стає 12.5. Мінут 60 і більше — ЕГГОГ.</td>
         </tr>
         <tr>
           <td><span class="kop">×</span></td><td>*</td>
@@ -1568,13 +1591,13 @@ private:
           <td><span class="knum">3</span></td><td>3</td>
           <td>Цифра 3, або регістр R3.</td>
           <td>ln</td>
-          <td>Частки градуса у градуси, мінути і секунди.</td>
+          <td>°→′″ частки градуса у мінути і секунди. 12.5125 стає 12.3045</td>
         </tr>
         <tr>
           <td><span class="kop">↔</span></td><td>X</td>
           <td>Поміняти X і Y місцями.</td>
           <td>Y у степені X. Основа в Y, показник у X.</td>
-          <td>Градуси, мінути і секунди назад у частки градуса.</td>
+          <td>′″→° мінути і секунди у частки градуса. 12.3045 стає 12.5125</td>
         </tr>
         <tr>
           <td><span class="kop">В↑</span></td><td>Enter</td>
@@ -1638,7 +1661,7 @@ private:
         <li>Точка зупину — подвійний клік по кроку у вкладці пам'яті або F9.
             І пуск пробілом, і автокрок на ній зупиняються.</li>
         <li><span class="kop">F12</span> або «Тільки МК-61» ховає бічну панель.
-            Кнопка «Про» біля рядка режиму — версія і ліцензії.</li>
+            Кнопка «Про» біля рядка режиму — версія, час збірки і ліцензія.</li>
       </ul>
       <p>Далі — як влаштований сам калькулятор: індикатор, стек, функції і коди команд.
       Умовний перехід працює навпаки, ніж у звичних мовах. Про це в розділі 6.</p>
@@ -1883,25 +1906,25 @@ private:
         </tr>
         <tr>
           <td><span class="kk">К</span> <span class="knum">6</span></td>
-          <td><span class="kfn">° ′</span> (Г→М)</td>
+          <td><span class="kfn">°→′</span> (Г→М)</td>
           <td><span class="vfd">33</span></td>
           <td>Переведення градусів (годин) із десятковими частками (<code>ГГ.гггг</code>) у градуси, мінути й частки мінути (<code>ГГ.ММмм</code>).</td>
         </tr>
         <tr>
           <td><span class="kk">К</span> <span class="kop">+</span></td>
-          <td><span class="kfn">° ′</span> (М→Г)</td>
+          <td><span class="kfn">′→°</span> (М→Г)</td>
           <td><span class="vfd">26</span></td>
           <td>Переведення градусів і мінут (<code>ГГ.ММмм</code>) у десяткові частки градуса (<code>ГГ.гггг</code>). При мінутах ≥ 60 — <span class="vfd">ЕГГОГ</span>.</td>
         </tr>
         <tr>
           <td><span class="kk">К</span> <span class="knum">3</span></td>
-          <td><span class="kfn">° ′ ″</span> (Г→МС)</td>
+          <td><span class="kfn">°→′″</span> (Г→МС)</td>
           <td><span class="vfd">30</span></td>
           <td>Переведення десяткових часток градуса (<code>ГГ.гггг</code>) у градуси, мінути й секунди (<code>ГГ.ММССс</code>).</td>
         </tr>
         <tr>
           <td><span class="kk">К</span> <span class="kop">↔</span></td>
-          <td><span class="kfn">° ′ ″</span> (МС→Г)</td>
+          <td><span class="kfn">′″→°</span> (МС→Г)</td>
           <td><span class="vfd">2A</span></td>
           <td>Переведення градусів, мінут і секунд (<code>ГГ.ММССс</code>) у десяткові частки градуса (<code>ГГ.гггг</code>). При мінутах чи секундах ≥ 60 — <span class="vfd">ЕГГОГ</span>.</td>
         </tr>
@@ -2018,7 +2041,8 @@ private:
             <span class="kf">F</span> <span class="kop">БП</span> (<span class="ffn">L2</span>, код <span class="vfd">58</span> — регістр <span class="reg">R2</span>),
             <span class="kf">F</span> <span class="kop">ПП</span> (<span class="ffn">L3</span>, код <span class="vfd">5A</span> — регістр <span class="reg">R3</span>).
             При виконанні ціла частина відповідного регістра (<span class="reg">R0</span>..<span class="reg">R3</span>)
-            <b>зменшується на 1</b>; якщо нове значення <b>&gt; 0</b>, відбувається перехід на вказану адресу початку циклу, інакше цикл завершується.</li>
+            <b>зменшується на 1</b>, дробова частина не чіпається. Перехід є, доки ціла частина
+            <b>не дорівнює нулю</b>. Нуль у лічильнику стає −1, і стрибок усе одно відбувається.</li>
         <li><b>Підпрограми</b>: команда <span class="kop">ПП</span> <code>XX</code> (код <span class="vfd">53 XX</span>)
             запам'ятовує адресу повернення у спеціальному стеку повернень (глибина — до <b>5 рівнів вкладеності</b>)
             та передає керування на адресу <code>XX</code>. Команда <span class="kop">В/О</span> (код <span class="vfd">52</span>)
@@ -2028,7 +2052,7 @@ private:
       <h3>6.2. Непряма адресація (префікс К) та автоінкремент/автодекремент</h3>
       <p>Якщо перед командами пам'яті або переходів натиснути синю клавішу <span class="kk">К</span>,
       а потім указати регістр-вказівник <code>n</code> (<span class="reg">0</span>..<span class="reg">E</span>),
-      то номер цільового регістра або адреса переходу береться з <b>цілої частини вмісту регістра <code>Rn</code></b>
+      то номер цільового регістра або адреса переходу береться з <b>модуля цілої частини регістра <code>Rn</code></b>
       (займає <b>1 крок</b> у пам'яті програм):</p>
       <ul>
         <li><b>Регістри <span class="reg">R0</span>, <span class="reg">R1</span>, <span class="reg">R2</span>, <span class="reg">R3</span> (Автодекремент)</b>:
@@ -2213,24 +2237,18 @@ private:
   }
 
   void showAbout() {
-    QMessageBox box(this);
-    box.setWindowTitle(QStringLiteral("Про програму"));
-    box.setTextFormat(Qt::RichText);
-    box.setText(
-      QStringLiteral(
-        "<p><b>Електроніка МК-61</b>, емулятор %1</p>"
-        "<p>Стек, регістри, 105 кроків і клавіші як на «Електроніці МК-61». "
-        "Програма під GNU GPL версії 3. Повний текст — у файлі LICENSE.</p>"
-        "<p>Вікно зібрано на Qt %2 (The Qt Company). Qt іде під LGPL-3.0 або GPL-3.0, "
-        "залежно від збірки, якою користувалися. Кнопка нижче відкриває їхнє вікно.</p>"
-        "<p>Цифри на індикаторі малює шрифт MK61 VFD з цього ж проєкту, теж під GPL-3.0.</p>")
-        .arg(QStringLiteral(MK61EMU_VERSION), QString::fromUtf8(qVersion())));
-    auto *qt_btn = box.addButton(QStringLiteral("Про Qt…"), QMessageBox::ActionRole);
-    box.addButton(QMessageBox::Ok);
-    box.exec();
-    if (box.clickedButton() == qt_btn) {
-      QMessageBox::aboutQt(this, QStringLiteral("Qt"));
-    }
+    const QString text =
+      QStringLiteral("<h3>Електроніка МК-61 %1</h3>"
+                     "<p>Емулятор програмованого мікрокалькулятора «Електроніка МК-61».</p>"
+                     "<p>"
+                     "Версія програми: <b>%1</b> <br/>"
+                     "Час останньої збірки: <b>%2</b>"
+                     "</p>"
+                     "<p>© 2026 Ihor Dolinskyi<br>"
+                     "Ліцензія: GNU GPL версії 3 або пізнішої.<br>"
+                     "Подробиці про сторонні компоненти — у файлі NOTICE.</p>")
+        .arg(QStringLiteral(MK61EMU_VERSION_STRING), QStringLiteral(MK61EMU_BUILD_TIME_READABLE));
+    QMessageBox::about(this, QStringLiteral("Про програму"), text);
   }
 
   void triggerKey(Key key) {
@@ -2473,7 +2491,7 @@ private:
       QStringLiteral("<b>%1:</b> %2").arg(to_qstr(preset->title), to_qstr(preset->usage_hint)));
     calc_.assemble_and_load(preset->source_code);
 
-    if (preset->id == "moon_lander") {
+    if (preset->id == "moon_lander" || preset->id == "moon_lander_2") {
       calc_.set_memory_reg(1, 1000.0);
       calc_.set_memory_reg(2, -50.0);
       calc_.set_memory_reg(3, 250.0);
@@ -2487,6 +2505,23 @@ private:
       calc_.set_memory_reg(1, 1.0);
       calc_.set_memory_reg(2, -5.0);
       calc_.set_memory_reg(3, 6.0);
+    } else if (preset->id == "heron") {
+      calc_.set_memory_reg(1, 3.0);
+      calc_.set_memory_reg(2, 4.0);
+      calc_.set_memory_reg(3, 5.0);
+    } else if (preset->id == "linear2") {
+      calc_.set_memory_reg(1, 2.0);
+      calc_.set_memory_reg(2, 1.0);
+      calc_.set_memory_reg(3, 5.0);
+      calc_.set_memory_reg(4, 1.0);
+      calc_.set_memory_reg(5, -1.0);
+      calc_.set_memory_reg(6, 1.0);
+    } else if (preset->id == "bisect") {
+      calc_.set_memory_reg(0, 20.0);
+      calc_.set_memory_reg(1, 1.0);
+      calc_.set_memory_reg(2, 2.0);
+    } else if (preset->id == "polar") {
+      calc_.set_angle_mode(AngleMode::Degrees);
     }
 
     refreshAll();
@@ -2589,8 +2624,11 @@ private:
     // між спалахами — звичайне число з регістра X.
     if (show_glance_) {
       vfd_screen_->setDisplayState(glance_state_);
+      vfd_screen_->setProperty("mk61Text", to_qstr(glance_state_.text));
     } else {
-      vfd_screen_->setDisplayState(calc_.display());
+      const DisplayState shown = calc_.display();
+      vfd_screen_->setDisplayState(shown);
+      vfd_screen_->setProperty("mk61Text", to_qstr(shown.text));
     }
 
     const QString mode_str = (calc_.operating_mode() == OperatingMode::Automatic)
@@ -2729,13 +2767,347 @@ private:
   }
 };
 
+QPushButton *key_button(QWidget *root, Key key) {
+  return root->findChild<QPushButton *>(QStringLiteral("mk61Key%1").arg(static_cast<int>(key)));
+}
+
+void click_button(QAbstractButton *button) {
+  button->click();
+  QApplication::processEvents();
+}
+
+QString stack_text(QWidget *root, int index) {
+  return root->findChild<QLabel *>(QStringLiteral("mk61Stack%1").arg(index))->text();
+}
+
+QString shown_display(QWidget *root) {
+  return root->findChild<QWidget *>(QStringLiteral("mk61Vfd"))->property("mk61Text").toString();
+}
+
+QString status_text(QWidget *root) {
+  return root->findChild<QLabel *>(QStringLiteral("mk61Status"))->text();
+}
+
+QString prefix_caption(PrefixState prefix) {
+  switch (prefix) {
+  case PrefixState::F:
+    return QStringLiteral("F");
+  case PrefixState::K:
+    return QStringLiteral("К");
+  case PrefixState::WaitAddr1:
+  case PrefixState::WaitAddr2:
+    return QStringLiteral("Адреса...");
+  case PrefixState::None:
+    return QStringLiteral("—");
+  default:
+    return QStringLiteral("Регістр...");
+  }
+}
+
+QString program_codes(const Calculator &calc) {
+  QStringList codes;
+  for (const auto &step : mk61::core::disassemble_program(calc.program_memory(), true)) {
+    if (step.arg_byte.has_value()) {
+      codes.push_back(QStringLiteral("%1 %2").arg(
+        to_qstr(step.opcode_str), QStringLiteral("%1")
+                                    .arg(static_cast<int>(*step.arg_byte), 2, 16, QLatin1Char('0'))
+                                    .toUpper()));
+    } else {
+      codes.push_back(to_qstr(step.opcode_str));
+    }
+  }
+  return codes.join(QLatin1Char('\n'));
+}
+
+QString table_codes(QWidget *root) {
+  auto *table = root->findChild<QTableWidget *>(QStringLiteral("mk61Prog"));
+  QStringList codes;
+  for (int row = 0; row < table->rowCount(); ++row) {
+    const auto *item = table->item(row, 1);
+    codes.push_back(item != nullptr ? item->text() : QString());
+  }
+  return codes.join(QLatin1Char('\n'));
+}
+
+QString trimmed_value(const mk61::core::RegisterValue &value) {
+  return to_qstr(Calculator::format_register_value(value)).trimmed();
+}
+
+// Порожній рядок означає, що вікно збігається з тим самим натисканням у ядрі.
+QString window_mismatch(QWidget *root, const Calculator &ref) {
+  const std::array<const mk61::core::RegisterValue *, 5> regs = {
+    &ref.raw_t(), &ref.raw_z(), &ref.raw_y(), &ref.raw_x(), &ref.raw_x1()};
+  const std::array<const char *, 5> names = {"T", "Z", "Y", "X", "X1"};
+  for (std::size_t i = 0; i < regs.size(); ++i) {
+    const QString got = stack_text(root, static_cast<int>(i));
+    const QString expect = trimmed_value(*regs[i]);
+    if (got != expect) {
+      return QStringLiteral("стек %1: на екрані «%2», має бути «%3»").arg(names[i], got, expect);
+    }
+  }
+  const QString display = shown_display(root);
+  const QString expect_display = to_qstr(ref.display().text);
+  if (display != expect_display) {
+    return QStringLiteral("індикатор: «%1», має бути «%2»").arg(display, expect_display);
+  }
+  const QString status = status_text(root);
+  const QString mode = (ref.operating_mode() == OperatingMode::Automatic) ? QStringLiteral("АВТ")
+                                                                          : QStringLiteral("ПРГ");
+  if (!status.contains(QStringLiteral("Режим: %1").arg(mode))) {
+    return QStringLiteral("режим: «%1», очікується %2").arg(status, mode);
+  }
+  const QString prefix = prefix_caption(ref.prefix_state());
+  if (!status.contains(QStringLiteral("Мод: %1").arg(prefix))) {
+    return QStringLiteral("префікс: «%1», очікується %2").arg(status, prefix);
+  }
+  const QString pc = to_qstr(mk61::core::format_step_address(ref.pc()));
+  if (!status.contains(QStringLiteral("PC: %1").arg(pc))) {
+    return QStringLiteral("крок: «%1», очікується PC: %2").arg(status, pc);
+  }
+  const QString got_codes = table_codes(root);
+  const QString expect_codes = program_codes(ref);
+  if (got_codes != expect_codes) {
+    return QStringLiteral("пам'ять програм розійшлася");
+  }
+  return {};
+}
+
+QString combo_name(std::optional<Key> prefix, Key key) {
+  QString name;
+  if (prefix.has_value()) {
+    name = to_qstr(mk61::core::key_info(*prefix).primary_label) + QLatin1Char(' ');
+  }
+  name += to_qstr(mk61::core::key_info(key).primary_label);
+  return name;
+}
+
+void press_combo(QWidget *window, Calculator &mirror, std::optional<Key> prefix, Key key) {
+  if (prefix.has_value()) {
+    click_button(key_button(window, *prefix));
+    mirror.press_key(*prefix);
+  }
+  click_button(key_button(window, key));
+  mirror.press_key(key);
+}
+
+int run_gui_self_test() {
+  char *end = nullptr;
+  const double probe = std::strtod("12.5", &end);
+  if (probe != 12.0 || end == nullptr || *end != '.') {
+    std::fprintf(stderr,
+                 "Тест вікна має йти в локалі з десятковою комою. "
+                 "Зараз strtod(\"12.5\") дає %g, тож помилка «з'їденої» частки тут не видна.\n",
+                 probe);
+    return 1;
+  }
+
+  QFont vfd_font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+  const int font_id =
+    QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/MK61VFD-Regular.ttf"));
+  if (font_id != -1) {
+    const QStringList families = QFontDatabase::applicationFontFamilies(font_id);
+    if (!families.isEmpty()) {
+      vfd_font = QFont(families.first());
+    }
+  }
+
+  Mk61MainWindow window(vfd_font);
+  window.show();
+  QApplication::processEvents();
+
+  auto *speed = window.findChild<QComboBox *>(QStringLiteral("mk61Speed"));
+  speed->setCurrentIndex(speed->findText(QStringLiteral("Миттєво")));
+
+  QPushButton *reset = nullptr;
+  for (auto *button : window.findChildren<QPushButton *>()) {
+    if (button->text() == QStringLiteral("Скидання")) {
+      reset = button;
+      break;
+    }
+  }
+  if (reset == nullptr) {
+    std::fprintf(stderr, "Не знайдено кнопку скидання.\n");
+    return 1;
+  }
+
+  for (const auto &info : mk61::core::all_keys()) {
+    if (key_button(&window, info.key) == nullptr) {
+      std::fprintf(stderr, "Немає кнопки «%s» на панелі.\n",
+                   std::string(info.primary_label).c_str());
+      return 1;
+    }
+  }
+
+  QRadioButton *prg = nullptr;
+  QRadioButton *avt = nullptr;
+  for (auto *radio : window.findChildren<QRadioButton *>()) {
+    if (radio->text() == QStringLiteral("ПРГ")) {
+      prg = radio;
+    } else if (radio->text() == QStringLiteral("АВТ")) {
+      avt = radio;
+    }
+  }
+  if (prg == nullptr || avt == nullptr) {
+    std::fprintf(stderr, "Не знайдено перемикачі АВТ і ПРГ.\n");
+    return 1;
+  }
+
+  auto note = [](std::vector<QString> &failures, const QString &name, const QString &problem) {
+    if (!problem.isEmpty()) {
+      failures.push_back(name + QStringLiteral(": ") + problem);
+    }
+  };
+
+  std::vector<QString> failures;
+  const std::array<std::optional<Key>, 3> prefixes = {std::nullopt, Key::F, Key::K};
+  const std::array<OperatingMode, 2> modes = {OperatingMode::Automatic, OperatingMode::Programming};
+  int checked = 0;
+
+  for (const OperatingMode mode : modes) {
+    for (const std::optional<Key> prefix : prefixes) {
+      for (const auto &info : mk61::core::all_keys()) {
+        // С/П без префікса в АВТ запускає всю програму, а не одну команду.
+        if (mode == OperatingMode::Automatic && !prefix.has_value() && info.key == Key::RunStop) {
+          continue;
+        }
+        click_button(reset);
+        Calculator mirror;
+        if (mode == OperatingMode::Programming) {
+          click_button(prg);
+          mirror.set_operating_mode(OperatingMode::Programming);
+        }
+        const QString name =
+          (mode == OperatingMode::Programming ? QStringLiteral("ПРГ ") : QStringLiteral("АВТ ")) +
+          combo_name(prefix, info.key);
+        press_combo(&window, mirror, prefix, info.key);
+        note(failures, name, window_mismatch(&window, mirror));
+        ++checked;
+      }
+    }
+  }
+
+  // С/П у режимі рахунку: спочатку записати зупинку, потім пуск. Швидкість уже «Миттєво».
+  {
+    click_button(reset);
+    Calculator mirror;
+    click_button(prg);
+    mirror.set_operating_mode(OperatingMode::Programming);
+    click_button(key_button(&window, Key::RunStop));
+    mirror.press_key(Key::RunStop);
+    click_button(avt);
+    mirror.set_operating_mode(OperatingMode::Automatic);
+    click_button(key_button(&window, Key::RunStop));
+    mirror.press_key(Key::RunStop);
+    note(failures, QStringLiteral("АВТ С/П пуск"), window_mismatch(&window, mirror));
+    ++checked;
+  }
+
+  struct Sample {
+    const char *name;
+    std::vector<Key> keys;
+    const char *x;
+    bool error;
+  };
+  const std::array<Sample, 12> samples = {{
+    {"12.5 К 6", {Key::D1, Key::D2, Key::Dot, Key::D5, Key::K, Key::D6}, "12.30", false},
+    {"12.30 К +", {Key::D1, Key::D2, Key::Dot, Key::D3, Key::D0, Key::K, Key::Plus}, "12.5", false},
+    {"12.5 К 3", {Key::D1, Key::D2, Key::Dot, Key::D5, Key::K, Key::D3}, "12.3000", false},
+    {"12.3045 К ↔",
+     {Key::D1, Key::D2, Key::Dot, Key::D3, Key::D0, Key::D4, Key::D5, Key::K, Key::Swap},
+     "12.5125",
+     false},
+    {"45 К 6", {Key::D4, Key::D5, Key::K, Key::D6}, "45.00", false},
+    {"0.5 К 6", {Key::Dot, Key::D5, Key::K, Key::D6}, "0.30", false},
+    {"-12.5 К 6",
+     {Key::D1, Key::D2, Key::Dot, Key::D5, Key::Sign, Key::K, Key::D6},
+     "-12.30",
+     false},
+    {"12.5 + 1",
+     {Key::D1, Key::D2, Key::Dot, Key::D5, Key::Enter, Key::D1, Key::Plus},
+     "13.5",
+     false},
+    {"9 F √", {Key::D9, Key::F, Key::Minus}, "3.", false},
+    {"2 F x²", {Key::D2, Key::F, Key::Multiply}, "4.", false},
+    {"4 F 1/x", {Key::D4, Key::F, Key::Divide}, "0.25", false},
+    {"12.65 К +", {Key::D1, Key::D2, Key::Dot, Key::D6, Key::D5, Key::K, Key::Plus}, "", true},
+  }};
+
+  for (const Sample &sample : samples) {
+    click_button(reset);
+    for (const Key key : sample.keys) {
+      click_button(key_button(&window, key));
+    }
+    if (sample.error) {
+      if (!shown_display(&window).contains(QStringLiteral("ЕГГОГ"))) {
+        failures.push_back(QString::fromUtf8(sample.name) +
+                           QStringLiteral(": очікувався ЕГГОГ, на індикаторі «") +
+                           shown_display(&window) + QStringLiteral("»"));
+      }
+    } else if (stack_text(&window, 3) != QString::fromUtf8(sample.x)) {
+      failures.push_back(QString::fromUtf8(sample.name) + QStringLiteral(": X = «") +
+                         stack_text(&window, 3) + QStringLiteral("», має бути «") +
+                         QString::fromUtf8(sample.x) + QStringLiteral("»"));
+    }
+    ++checked;
+  }
+
+  // Та сама частка градуса з клавіатури ПК, подією просто у вікно.
+  {
+    click_button(reset);
+    window.setFocus();
+    const std::array<int, 6> keys = {Qt::Key_1, Qt::Key_2, Qt::Key_Period,
+                                     Qt::Key_5, Qt::Key_K, Qt::Key_6};
+    for (const int key : keys) {
+      QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier);
+      QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier);
+      QApplication::sendEvent(&window, &press);
+      QApplication::sendEvent(&window, &release);
+      QApplication::processEvents();
+    }
+    if (stack_text(&window, 3) != QStringLiteral("12.30")) {
+      failures.push_back(QStringLiteral("клавіатура 12.5 K 6: X = «") + stack_text(&window, 3) +
+                         QStringLiteral("», має бути «12.30»"));
+    }
+    ++checked;
+  }
+
+  if (!failures.empty()) {
+    std::fprintf(stderr, "Кнопки вікна: %zu розбіжностей із %d перевірок.\n", failures.size(),
+                 checked);
+    for (const QString &failure : failures) {
+      std::fprintf(stderr, "  %s\n", failure.toUtf8().constData());
+    }
+    return 1;
+  }
+  std::fprintf(stdout, "Кнопки вікна: %d перевірок, F і К теж, частка градуса на місці.\n",
+               checked);
+  return 0;
+}
+
 } // namespace
 
 int main(int argc, char *argv[]) {
   QApplication app(argc, argv);
+  bool self_test = false;
+  for (int i = 1; i < argc; ++i) {
+    if (std::string_view(argv[i]) == "--self-test") {
+      self_test = true;
+    }
+  }
+  if (self_test) {
+    // Навмисно лишаємо українську локаль: у ній кома є десятковим роздільником.
+    if (std::setlocale(LC_ALL, "uk_UA.UTF-8") == nullptr) {
+      std::fprintf(stderr, "Немає локалі uk_UA.UTF-8, без неї тест кнопок не перевірить кому.\n");
+      return 1;
+    }
+    return run_gui_self_test();
+  }
+  // Qt вмикає системну локаль. В uk_UA кома — десятковий роздільник, і 12.5
+  // стає 12 ще до будь-якої дії. Числа калькулятора завжди з крапкою.
+  std::setlocale(LC_NUMERIC, "C");
   QApplication::setApplicationName(QStringLiteral("mk61emu"));
   QApplication::setApplicationDisplayName(QStringLiteral("Електроніка МК-61"));
-  QApplication::setApplicationVersion(QStringLiteral(MK61EMU_VERSION));
+  QApplication::setApplicationVersion(QStringLiteral(MK61EMU_VERSION_STRING));
   QGuiApplication::setDesktopFileName(QStringLiteral("mk61emu"));
 
   QFont vfd_font = QFontDatabase::systemFont(QFontDatabase::FixedFont);

@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <format>
 #include <limits>
+#include <locale.h>
 #include <numbers>
 #include <sstream>
 
@@ -19,6 +20,30 @@ constexpr double kMinMk61Positive = 1.0e-99;
 constexpr double kZeroEps = 1.0e-99;
 
 bool is_zero_mk61(double v) noexcept { return std::abs(v) < kZeroEps; }
+
+// Qt вмикає системну локаль. В uk_UA десяткова кома, і strtod("12.5") дає 12:
+// крапка обриває розбір, тож частка градуса зникає ще до переведення.
+locale_t c_numeric_locale() noexcept {
+  static const locale_t loc = newlocale(LC_NUMERIC_MASK, "C", static_cast<locale_t>(0));
+  return loc;
+}
+
+class UseCNumeric {
+public:
+  UseCNumeric() noexcept
+      : prev_(c_numeric_locale() != static_cast<locale_t>(0) ? uselocale(c_numeric_locale())
+                                                             : static_cast<locale_t>(0)) {}
+  ~UseCNumeric() {
+    if (prev_ != static_cast<locale_t>(0)) {
+      uselocale(prev_);
+    }
+  }
+  UseCNumeric(const UseCNumeric &) = delete;
+  UseCNumeric &operator=(const UseCNumeric &) = delete;
+
+private:
+  locale_t prev_;
+};
 
 } // namespace
 
@@ -84,6 +109,7 @@ double Calculator::parse_entry_value() const noexcept {
   if (!entering_ || mantissa_digits_.empty()) {
     return 0.0;
   }
+  [[maybe_unused]] const UseCNumeric numeric_locale;
   double val = std::strtod(mantissa_digits_.c_str(), nullptr);
   if (mantissa_neg_) {
     val = -val;
@@ -137,7 +163,9 @@ double Calculator::round_mk61(double val) noexcept {
   if (std::abs(val) < kMinMk61Positive) {
     return 0.0;
   }
-  // Округлення до 8 значущих десяткових цифр мантиси (формат МК-61)
+  // Округлення до 8 значущих десяткових цифр мантиси (формат МК-61).
+  // Крапка в "%.7e" має лишатися крапкою навіть у локалі з десятковою комою.
+  [[maybe_unused]] const UseCNumeric numeric_locale;
   char buf[64]{};
   std::snprintf(buf, sizeof(buf), "%.7e", val);
   const double rounded = std::strtod(buf, nullptr);
@@ -428,6 +456,7 @@ std::array<std::uint8_t, 8> Calculator::extract_mk61_nibbles(const RegisterValue
   if (is_zero_mk61(abs_v)) {
     return nibs;
   }
+  [[maybe_unused]] const UseCNumeric numeric_locale;
   char buf[64]{};
   std::snprintf(buf, sizeof(buf), "%.7e", abs_v);
   // Формат "%.7e": "d.ddddddde+dd" -> перша цифра m0 = buf[0], далі m1..m7 = buf[2..8]
@@ -482,13 +511,14 @@ void Calculator::execute_opcode(std::uint8_t opcode, std::optional<std::uint8_t>
   const auto hi = static_cast<std::uint8_t>((opcode >> 4U) & 0x0FU);
   const auto lo = static_cast<std::uint8_t>(opcode & 0x0FU);
 
-  auto set_unary_result = [&](double res) {
+  auto set_unary_result = [&](double res, int min_fraction_digits = 0) {
     if (!std::isfinite(res) || std::abs(res) > kMaxMk61Value) {
       trigger_error();
       return;
     }
     x1_ = x_;
     x_ = RegisterValue{round_mk61(res)};
+    x_.min_fraction_digits = min_fraction_digits;
     stack_lift_ = true;
   };
 
@@ -665,7 +695,8 @@ void Calculator::execute_opcode(std::uint8_t opcode, std::optional<std::uint8_t>
     const double mins = std::floor(total_mins + 1.0e-9);
     const double secs = std::max(0.0, (total_mins - mins) * 60.0);
     const double res = deg + std::copysign(mins / 100.0 + secs / 10000.0, v);
-    set_unary_result(res);
+    // Чотири знаки: мінути і секунди. 12.5° — це 12.3000, не 12.3.
+    set_unary_result(res, 4);
     return;
   }
   case 0x31U: // К |x|
@@ -684,7 +715,8 @@ void Calculator::execute_opcode(std::uint8_t opcode, std::optional<std::uint8_t>
     const double deg = std::trunc(v);
     const double mins = std::abs(v - deg) * 60.0;
     const double res = deg + std::copysign(mins / 100.0, v);
-    set_unary_result(res);
+    // Два знаки — це мінути. 12.5° стає 12.30, а цілі градуси лишають .00.
+    set_unary_result(res, 2);
     return;
   }
   case 0x34U: // К [x] (ціла частина)
@@ -835,7 +867,8 @@ void Calculator::execute_opcode(std::uint8_t opcode, std::optional<std::uint8_t>
     double int_part = std::trunc(val) - 1.0;
     double frac_part = val - std::trunc(val);
     regs_[reg_idx] = RegisterValue{round_mk61(int_part + frac_part)};
-    if (arg_byte.has_value() && int_part > 0.0 && !is_zero_mk61(int_part)) {
+    // Перехід, доки ціла частина не стала нулем. Нуль у лічильнику дає −1 і стрибок.
+    if (arg_byte.has_value() && !is_zero_mk61(int_part)) {
       set_pc(decode_step_address(*arg_byte));
     }
     return;
@@ -1001,9 +1034,9 @@ void Calculator::press_key(Key key) {
     return;
   }
 
-  // F Сх (CF) — скасування префікса F або К
-  if ((prefix_ == PrefixState::F || prefix_ == PrefixState::K) && key == Key::ClearX &&
-      prefix_ == PrefixState::F) {
+  // F Сх — це CF: знімає жовтий префікс і нічого більше не робить.
+  // К Сх — це инв, тому синій префікс тут не знімається.
+  if (prefix_ == PrefixState::F && key == Key::ClearX) {
     prefix_ = PrefixState::None;
     return;
   }
@@ -1256,7 +1289,7 @@ void Calculator::press_key(Key key) {
       break; // К 2 (НОП)
     case Key::D3:
       op = 0x30U;
-      break; // К Г→МС (° ′ ″)
+      break; // К Г→МС (°→′″)
     case Key::D4:
       op = 0x31U;
       break; // К |x|
@@ -1265,7 +1298,7 @@ void Calculator::press_key(Key key) {
       break; // К ЗН
     case Key::D6:
       op = 0x33U;
-      break; // К Г→М (° ′)
+      break; // К Г→М (°→′)
     case Key::D7:
       op = 0x34U;
       break; // К [x]
@@ -1292,10 +1325,10 @@ void Calculator::press_key(Key key) {
       break; // К СЧ
     case Key::Plus:
       op = 0x26U;
-      break; // К М→Г (° ′)
+      break; // К М→Г (′→°)
     case Key::Swap:
       op = 0x2AU;
-      break; // К МС→Г (° ′ ″)
+      break; // К МС→Г (′″→°)
     default:
       break;
     }
@@ -1443,6 +1476,7 @@ bool Calculator::press_tokens(std::string_view tokens_line, std::string &error_o
     // Перевіримо, чи це багатозначне число (у режимі АВТ зручно вводити "3.14159")
     if (op_mode_ == OperatingMode::Automatic && prefix_ == PrefixState::None) {
       char *endptr = nullptr;
+      [[maybe_unused]] const UseCNumeric numeric_locale;
       const double val = std::strtod(tok.c_str(), &endptr);
       if (endptr != tok.c_str() && *endptr == '\0') {
         enter_number(val);
@@ -1467,8 +1501,38 @@ std::string Calculator::format_register_value(const RegisterValue &val) {
   if (!std::isfinite(v)) {
     return " ЕГГОГ";
   }
+
+  // Нулі після крапки в градусах і мінутах — частина запису, не зайві цифри.
+  // 12°30′ має бути 12.30, а не 12.3; 45°00′ — 45.00, а не 45.
+  auto keep_fraction_zeros = [&](std::string out) {
+    const int want = val.min_fraction_digits;
+    if (want <= 0) {
+      return out;
+    }
+    const auto dot = out.find('.');
+    if (dot == std::string::npos) {
+      return out;
+    }
+    int digits = 0;
+    for (const char c : out) {
+      if (c >= '0' && c <= '9') {
+        ++digits;
+      }
+    }
+    const int have = static_cast<int>(out.size() - dot - 1);
+    int add = want - have;
+    const int room = 8 - digits;
+    if (add > room) {
+      add = room;
+    }
+    if (add > 0) {
+      out.append(static_cast<std::size_t>(add), '0');
+    }
+    return out;
+  };
+
   if (is_zero_mk61(v)) {
-    return " 0.";
+    return keep_fraction_zeros(" 0.");
   }
 
   const bool neg = (v < 0.0);
@@ -1477,6 +1541,7 @@ std::string Calculator::format_register_value(const RegisterValue &val) {
 
   // На МК-61 числа від 10^-7 до 99999999 відображаються у природній формі, якщо значущі цифри
   // вміщуються у 8 розрядів мантиси
+  [[maybe_unused]] const UseCNumeric numeric_locale;
   char sci_buf[64]{};
   std::snprintf(sci_buf, sizeof(sci_buf), "%.7e", abs_v);
   // sci_buf має вигляд "d.ddddddde+dd"
@@ -1502,7 +1567,7 @@ std::string Calculator::format_register_value(const RegisterValue &val) {
     if (sig_len > int_digits) {
       out.append(digits.substr(int_digits, sig_len - int_digits));
     }
-    return out;
+    return keep_fraction_zeros(std::move(out));
   }
   if (exp10 < 0 && exp10 >= -7) {
     const auto leading_zeros = static_cast<std::size_t>(-exp10 - 1);
@@ -1510,7 +1575,7 @@ std::string Calculator::format_register_value(const RegisterValue &val) {
       std::string out = sign_str + "0.";
       out.append(leading_zeros, '0');
       out.append(digits.substr(0, sig_len));
-      return out;
+      return keep_fraction_zeros(std::move(out));
     }
   }
 
@@ -1609,6 +1674,7 @@ std::string Calculator::serialize_state() const {
 }
 
 bool Calculator::deserialize_state(std::string_view data, std::string &error_out) {
+  [[maybe_unused]] const UseCNumeric numeric_locale;
   Calculator tmp;
   std::istringstream iss{std::string(data)};
   std::string line;

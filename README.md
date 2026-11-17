@@ -46,7 +46,7 @@ With no arguments you get `МК-61 [АВТ | PC=00]>`. Nothing happens on a bare
 10 ^ 2 F ↔          # ^ is В↑: 10 stays in Y, 2^10 goes to X
 :deg
 30 F 7              # sin 30°
-:p                  # seven built-in programs
+:p                  # built-in programs
 :p 1
 2026 В/О С/П        # Easter 2026: X = month, Y = day
 ```

@@ -37,15 +37,15 @@ constexpr std::array<KeyInfo, kKeyCount> kAllKeys = {{
   // Ряд 4
   {Key::D4, 3, 0, "4", "sin⁻¹", "|x|", "4", "4", std::uint8_t{4}},
   {Key::D5, 3, 1, "5", "cos⁻¹", "ЗН", "5", "5", std::uint8_t{5}},
-  {Key::D6, 3, 2, "6", "tg⁻¹", "° ′", "6", "6", std::uint8_t{6}},
-  {Key::Plus, 3, 3, "+", "Вх", "° ′", "", "+", std::nullopt},
+  {Key::D6, 3, 2, "6", "tg⁻¹", "°→′", "6", "6", std::uint8_t{6}},
+  {Key::Plus, 3, 3, "+", "Вх", "′→°", "", "+", std::nullopt},
   {Key::Multiply, 3, 4, "×", "x²", "", "", "*", std::nullopt},
 
   // Ряд 5
   {Key::D1, 4, 0, "1", "eˣ", "", "1", "1", std::uint8_t{1}},
   {Key::D2, 4, 1, "2", "lg", "", "2", "2", std::uint8_t{2}},
-  {Key::D3, 4, 2, "3", "ln", "° ′ ″", "3", "3", std::uint8_t{3}},
-  {Key::Swap, 4, 3, "↔", "xʸ", "° ′ ″", "", "↔", std::nullopt},
+  {Key::D3, 4, 2, "3", "ln", "°→′″", "3", "3", std::uint8_t{3}},
+  {Key::Swap, 4, 3, "↔", "xʸ", "′″→°", "", "↔", std::nullopt},
   {Key::Enter, 4, 4, "В↑", "В↻", "СЧ", "e", "В↑", std::uint8_t{14}},
 
   // Ряд 6

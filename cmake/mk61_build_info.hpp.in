@@ -1,0 +1,7 @@
+#pragma once
+
+// Згенеровано CMake під час збірки. Не редагувати вручну.
+
+#define MK61EMU_VERSION_STRING "@MK61EMU_VERSION_STRING@"
+#define MK61EMU_BUILD_TIME "@MK61EMU_BUILD_TIME@"
+#define MK61EMU_BUILD_TIME_READABLE "@MK61EMU_BUILD_TIME_READABLE@"

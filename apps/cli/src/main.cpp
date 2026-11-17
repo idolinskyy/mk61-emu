@@ -3,6 +3,7 @@
 #include "core/presets.hpp"
 #include "core/types.hpp"
 
+#include <clocale>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -268,8 +269,8 @@ F
   Далі обов'язково регістр. Число з X записується туди, на індикаторі
   лишається те саме. Приклад: 25 Х→П 1  кладе 25 в R1.
   Х у цьому слові можна писати латинською.
-  F Х→П  — цикл L1. Крутить регістр R1: віднімає 1, і якщо ще більше нуля,
-           стрибає на адресу з двох цифр.
+  F Х→П  — цикл L1. Від цілої частини R1 віднімається 1, дріб лишається.
+           Стрибок, доки ціла частина не нуль. Нуль стає −1 і теж стрибає.
   К Х→П  — записати X у регістр, номер якого лежить в іншому регістрі.
            Далі клавіша того регістра-вказівника.
 
@@ -346,14 +347,14 @@ F
   Писати: 6
   Цифра 6, або регістр R6.
   F 6  — арктангенс.
-  К 6  — градуси з десятковою часткою (12.5) у градуси і мінути (12.30).
+  К 6  — °→′ : частки градуса у мінути. 12.5 стає 12.30.
 
 +
   Писати: +
   Додавання Y + X.
   F +  — повернути попереднє значення з X1 на індикатор. Ним користуються,
          коли дію натиснули не ту і хочуть аргумент назад.
-  К +  — мінути (12.30) назад у десяткові частки градуса (12.5).
+  К +  — ′→° : мінути у частки градуса. 12.30 стає 12.5.
          Якщо мінут 60 або більше — ЕГГОГ.
 
 ×
@@ -380,7 +381,7 @@ F
   Писати: 3
   Цифра 3, або регістр R3.
   F 3  — натуральний логарифм.
-  К 3  — десяткові частки градуса у градуси, мінути і секунди.
+  К 3  — °→′″ : частки градуса у мінути і секунди. 12.5125 стає 12.3045.
 
 ↔
   Писати: ↔    <->    XY    SWAP
@@ -388,7 +389,7 @@ F
   F ↔  — степінь X^Y. Основа в X, показник у Y, і Y після цього лишається.
          10 ^ 2 F ↔  рахує 2^10. Знак ^ тут не степінь, а скорочення В↑.
          Якщо основа нуль або від'ємна — ЕГГОГ.
-  К ↔  — градуси, мінути і секунди назад у десяткові частки.
+  К ↔  — ′″→° : мінути і секунди у частки градуса. 12.3045 стає 12.5125.
 
 В↑
   Писати: В↑    ^    ENT    ENTER
@@ -481,7 +482,7 @@ void print_presets() {
   const std::string hline = repeat_utf8("─", kInnerW);
   std::println("┌{}┐", hline);
   std::println("│{}│",
-               pad_col("                     ВБУДОВАНІ ПРОГРАМИ ДЛЯ МК-61 (1..7)", kInnerW));
+               pad_col("                    ВБУДОВАНІ ПРОГРАМИ ДЛЯ МК-61 (1..14)", kInnerW));
   std::println("└{}┘", hline);
   const auto presets = mk61::core::builtin_programs();
   for (std::size_t i = 0; i < presets.size(); ++i) {
@@ -570,7 +571,7 @@ void print_repl_help() {
   123456 К Сх              порозрядна інверсія, на індикаторі 8.ГCL-9
 
 Готова програма
-  :p                       список із семи прикладів і як їх пускати
+  :p                       список прикладів і як їх пускати
   :p 1                     записати в пам'ять дату Великодня
   2026 В/О С/П             рік, програма на крок 00, пуск
                            у X буде місяць, у Y — день
@@ -612,8 +613,7 @@ void print_repl_help() {
   :help    :h    ?      ця довідка
   :keys    :k           кожна клавіша: що писати і що вона робить
   :p                    список прикладів
-  :p <номер або ім'я>   завантажити: 1..7, easter, factorial, quadratic,
-                        hypotenuse, indirect_sum, simpson, moon_lander
+  :p <номер або ім'я>   завантажити приклад зі списку :p (номери 1..14)
   :asm                  ввести програму текстом
   :l       :prog        лістинг
   :g                    таблиця 10×10
@@ -640,7 +640,7 @@ void print_cli_usage(std::string_view prog_name) {
                prog_name);
   std::println("Опції командного рядка:");
   std::println("  -h, --help              Показати цю довідку та вийти");
-  std::println("  -p, --preset <id|1..7>  Завантажити вбудовану програму:");
+  std::println("  -p, --preset <id|1..14> Завантажити вбудовану програму:");
   std::println("                            1 або easter       — Дата Великодня (Пасхалія, 10×10)");
   std::println("                            2 або factorial    — Факторіал числа (n!)");
   std::println("                            3 або quadratic    — Квадратне рівняння (ax²+bx+c=0)");
@@ -648,6 +648,14 @@ void print_cli_usage(std::string_view prog_name) {
   std::println("                            5 або indirect_sum — Сума масиву R5..R9 (К П→Х 4)");
   std::println("                            6 або simpson      — Інтеграл sin(x) методом Сімпсона");
   std::println("                            7 або moon_lander  — Гра «Лунолёт-1»");
+  std::println(
+    "                            8 або moon_lander_2 — Гра «Лунолёт-2» (стоп під нулем)");
+  std::println("                            9 або gcd          — НСД (алгоритм Евкліда)");
+  std::println("                            10 або fibonacci   — Числа Фібоначчі");
+  std::println("                            11 або heron       — Площа трикутника за Героном");
+  std::println("                            12 або polar       — Полярні й декартові координати");
+  std::println("                            13 або linear2     — Система двох лінійних рівнянь");
+  std::println("                            14 або bisect      — Корінь половинним діленням");
   std::println(
     "  -f, --file <шлях>       Завантажити програму (.txt/.asm) або стан (.mk61) із файлу");
   std::println("  -a, --asm <код>         Асемблювати програму з текстового рядка");
@@ -700,7 +708,7 @@ bool apply_preset_to_calculator(Calculator &calc, std::string_view name) {
   if (!res.ok) {
     return false;
   }
-  if (preset->id == "moon_lander") {
+  if (preset->id == "moon_lander" || preset->id == "moon_lander_2") {
     calc.set_memory_reg(1, 1000.0);
     calc.set_memory_reg(2, -50.0);
     calc.set_memory_reg(3, 250.0);
@@ -714,6 +722,23 @@ bool apply_preset_to_calculator(Calculator &calc, std::string_view name) {
     calc.set_memory_reg(1, 1.0);
     calc.set_memory_reg(2, -5.0);
     calc.set_memory_reg(3, 6.0);
+  } else if (preset->id == "heron") {
+    calc.set_memory_reg(1, 3.0);
+    calc.set_memory_reg(2, 4.0);
+    calc.set_memory_reg(3, 5.0);
+  } else if (preset->id == "linear2") {
+    calc.set_memory_reg(1, 2.0);
+    calc.set_memory_reg(2, 1.0);
+    calc.set_memory_reg(3, 5.0);
+    calc.set_memory_reg(4, 1.0);
+    calc.set_memory_reg(5, -1.0);
+    calc.set_memory_reg(6, 1.0);
+  } else if (preset->id == "bisect") {
+    calc.set_memory_reg(0, 20.0);
+    calc.set_memory_reg(1, 1.0);
+    calc.set_memory_reg(2, 2.0);
+  } else if (preset->id == "polar") {
+    calc.set_angle_mode(AngleMode::Degrees);
   }
   return true;
 }
@@ -747,6 +772,8 @@ bool handle_reg_assignment(Calculator &calc, std::string_view spec) {
 } // namespace
 
 int main(int argc, char *argv[]) {
+  // Числа в аргументах і на індикаторі завжди з крапкою, навіть якщо в системі кома.
+  std::setlocale(LC_NUMERIC, "C");
   Calculator calc;
   bool batch_mode = false;
   bool do_run = false;
@@ -901,7 +928,7 @@ int main(int argc, char *argv[]) {
       const std::string_view arg = trim_sv(sv.substr(space_pos + 1));
       const auto *preset = mk61::core::find_builtin_program(arg);
       if (preset == nullptr) {
-        std::println("Невідомий приклад '{}'. Введіть ':p' для списку (1..7).", arg);
+        std::println("Невідомий приклад '{}'. Введіть ':p' для списку (1..14).", arg);
         continue;
       }
       apply_preset_to_calculator(calc, arg);
