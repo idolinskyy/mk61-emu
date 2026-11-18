@@ -4,6 +4,8 @@ English | [Українська](README.uk.md)
 
 An emulator of the Soviet programmable calculator **Elektronika MK-61**: the X–Y–Z–T stack, 15 registers, 105 program steps, and the same key codes as the real machine. Two programs ship together — a console (`mk61emu`) and a Qt 6 window (`mk61emu-gui`).
 
+This is a reimplementation of the calculator's behaviour. It does not run the MK-61 mask ROM and does not model the K145IK13 chipset. Keys, opcodes, the stack, the registers, and the branches follow the machine's rules. Sine, logarithm, power, and the other transcendental functions come from the compiler's math library, so the last displayed digit can differ from a real MK-61. `К СЧ` returns `0.404067` after power-on, as on the calculator; later values come from a separate generator. The "as on the MK-61" pause uses the upper bounds from the manual, not the original clock.
+
 Copyright (C) 2026 Ihor Dolinskyi. Licensed under the GNU GPL v3. See [LICENSE](LICENSE). Qt, the indicator font, and Catch2 (tests only) are listed in [NOTICE](NOTICE).
 
 ## Build
@@ -34,12 +36,12 @@ ctest --preset dev
 `scripts/package.sh` builds a `.deb` and a `.tar.gz` (and an AppImage when `linuxdeploy` is installed). It picks up `~/Qt/<version>/gcc_64` on its own; otherwise set `CMAKE_PREFIX_PATH`. Artifacts land in `dist/`. The text to paste into a GitHub Release is in `packaging/GITHUB_RELEASE_v1.0.0.md`.
 
 ```bash
-sudo apt install ./mk61emu_1.0.0_amd64.deb
+sudo apt install ./mk61emu_1.0.2_amd64.deb
 ```
 
 ## Console
 
-With no arguments you get `МК-61 [АВТ | PC=00]>`. Nothing happens on a bare keypress: type the key names separated by spaces and press Enter. Commands for the program itself start with `:`. `:keys` lists every key and the word to type, `:help` is the longer guide.
+With no arguments you get `МК-61 [АВТ | PC=00]>`. Nothing happens on a bare keypress: type the key names separated by spaces and press Enter. Up and down arrows recall earlier lines. Commands for the program itself start with `:`. `:keys` lists every key and the word to type, `:help` is the longer guide.
 
 ```text
 2 В↑ 3 +

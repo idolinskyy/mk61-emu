@@ -107,7 +107,7 @@ TEST_CASE("Scientific functions, x^y order, and angle modes", "[math]") {
 
   // Радіани (Р): sin(π / 2) = 1.0
   calc.set_angle_mode(AngleMode::Radians);
-  REQUIRE(calc.press_tokens("F . 2 / F 7", err)); // F . = π
+  REQUIRE(calc.press_tokens("F + 2 / F 7", err)); // F + = π
   REQUIRE(calc.reg_x() == Approx(1.0));
 }
 
@@ -155,7 +155,7 @@ TEST_CASE("Stack matches the real MK-61 for swap, rotate, pi, power, sign and lo
   REQUIRE(calc.reg_x1() == Approx(4.0));
 
   calc.reset();
-  REQUIRE(calc.press_tokens("1 В↑ 2 В↑ 3 В↑ 4 F В↑", err));
+  REQUIRE(calc.press_tokens("1 В↑ 2 В↑ 3 В↑ 4 F .", err));
   REQUIRE(calc.reg_x() == Approx(3.0));
   REQUIRE(calc.reg_y() == Approx(2.0));
   REQUIRE(calc.reg_z() == Approx(1.0));
@@ -163,7 +163,7 @@ TEST_CASE("Stack matches the real MK-61 for swap, rotate, pi, power, sign and lo
   REQUIRE(calc.reg_x1() == Approx(4.0));
 
   calc.reset();
-  REQUIRE(calc.press_tokens("4 В↑ F .", err));
+  REQUIRE(calc.press_tokens("4 В↑ F +", err));
   REQUIRE(calc.reg_x() == Approx(3.1415926));
   REQUIRE(calc.reg_y() == Approx(4.0));
   REQUIRE(calc.reg_z() == Approx(4.0));
@@ -640,7 +640,7 @@ TEST_CASE("Every key writes the real MK-61 opcode in programming mode", "[keys]"
   as_prg(calc);
   tap(calc, {Key::F, Key::Dot, Key::F, Key::Minus, Key::F, Key::Multiply, Key::F, Key::Divide,
              Key::F, Key::Swap, Key::F, Key::Enter, Key::F, Key::Plus});
-  expect_bytes(calc, {0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x0F});
+  expect_bytes(calc, {0x25, 0x21, 0x22, 0x23, 0x24, 0x0F, 0x20});
 
   as_prg(calc);
   tap(calc, {Key::F, Key::StepFwd, Key::D0, Key::D0});
@@ -952,7 +952,7 @@ TEST_CASE("Plain, F and K keys move the stack the way MK-61 does", "[keys]") {
   // π завжди піднімає стек
   calc.reset();
   load_stack(calc, 10.0, 20.0, 30.0, 4.0);
-  tap(calc, {Key::F, Key::Dot});
+  tap(calc, {Key::F, Key::Plus});
   REQUIRE(calc.reg_x() == Approx(3.1415926));
   REQUIRE(calc.reg_y() == Approx(4.0));
   REQUIRE(calc.reg_z() == Approx(30.0));
@@ -961,11 +961,11 @@ TEST_CASE("Plain, F and K keys move the stack the way MK-61 does", "[keys]") {
 
   // Вх після результату піднімає стек, після В↑ замінює X
   calc.reset();
-  tap(calc, {Key::D4, Key::F, Key::Multiply, Key::F, Key::Plus});
+  tap(calc, {Key::D4, Key::F, Key::Multiply, Key::F, Key::Enter});
   REQUIRE(calc.reg_x() == Approx(4.0));
   REQUIRE(calc.reg_y() == Approx(16.0));
   REQUIRE(calc.reg_x1() == Approx(4.0));
-  tap(calc, {Key::Enter, Key::F, Key::Plus});
+  tap(calc, {Key::Enter, Key::F, Key::Enter});
   REQUIRE(calc.reg_x() == Approx(4.0));
   REQUIRE(calc.reg_y() == Approx(4.0));
   REQUIRE(calc.reg_z() == Approx(16.0));
@@ -1327,4 +1327,28 @@ TEST_CASE("A comma locale does not eat the fractional part", "[locale]") {
   calc.reset();
   tap(calc, {Key::D1, Key::D2, Key::Dot, Key::D5, Key::Enter, Key::D1, Key::Plus});
   REQUIRE(calc.reg_x() == Approx(13.5));
+}
+
+TEST_CASE("Launch from address 00 skips an empty step or В/О") {
+  Calculator calc;
+  calc.enter_number(7.0);
+  calc.set_program_byte(1, 0x50);
+  REQUIRE(calc.run_program() == mk61::core::RunStatus::StoppedAtSP);
+  REQUIRE(calc.reg_x() == Approx(7.0));
+  REQUIRE(calc.total_steps_executed() == 1);
+
+  calc.reset();
+  calc.enter_number(7.0);
+  calc.set_program_byte(0, 0x52);
+  calc.set_program_byte(1, 0x01);
+  calc.set_program_byte(2, 0x50);
+  REQUIRE(calc.run_program() == mk61::core::RunStatus::StoppedAtSP);
+  REQUIRE(calc.reg_x() == Approx(1.0));
+
+  calc.reset();
+  calc.enter_number(7.0);
+  calc.set_program_byte(0, 0x01);
+  calc.set_program_byte(1, 0x50);
+  REQUIRE(calc.run_program() == mk61::core::RunStatus::StoppedAtSP);
+  REQUIRE(calc.reg_x() == Approx(1.0));
 }

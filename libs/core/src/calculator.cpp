@@ -70,6 +70,7 @@ void Calculator::reset() noexcept {
   dark_ = false;
   stack_lift_ = false;
   steps_executed_ = 0;
+  last_run_status_.reset();
   rng_state_ = 0x40406700ULL;
   reset_entry();
 }
@@ -993,9 +994,10 @@ RunStatus Calculator::run_program(std::size_t max_steps) {
   if (error_ || dark_) {
     return RunStatus::Error;
   }
-  if (pc_ == 0) {
-    // На реальному МК-61 запуск С/П з адреси 00 починає виконання з кроку 01, якщо на 00 стоїть
-    // 00/52, але якщо користувач записав команду на крок 00, виконуємо з поточного pc_ (00).
+  // На МК-61 пуск з адреси 00 проминає крок 00, якщо там порожньо (00) або стоїть В/О (52).
+  // Будь-яка інша команда на кроці 00 виконується.
+  if (pc_ == 0 && (prog_[0] == 0x00U || prog_[0] == 0x52U)) {
+    set_pc(1);
   }
   for (std::size_t s = 0; s < max_steps; ++s) {
     const std::uint8_t current_op = prog_[static_cast<std::size_t>(pc_)];
@@ -1013,6 +1015,12 @@ RunStatus Calculator::run_program(std::size_t max_steps) {
   return RunStatus::StepLimitReached;
 }
 
+std::optional<RunStatus> Calculator::take_run_status() noexcept {
+  const auto status = last_run_status_;
+  last_run_status_.reset();
+  return status;
+}
+
 void Calculator::press_key(Key key) {
   if (dark_) {
     if (key == Key::ClearX) {
@@ -1023,6 +1031,7 @@ void Calculator::press_key(Key key) {
   if (error_ && key != Key::ClearX) {
     return;
   }
+  last_run_status_.reset();
 
   // 1. Обробка префіксних клавіш F та К
   if (key == Key::F) {
@@ -1212,8 +1221,8 @@ void Calculator::press_key(Key key) {
       op = 0x1EU;
       break; // tg
     case Key::Dot:
-      op = 0x20U;
-      break; // π
+      op = 0x25U;
+      break; // В↻
     case Key::Minus:
       op = 0x21U;
       break; // √
@@ -1227,11 +1236,11 @@ void Calculator::press_key(Key key) {
       op = 0x24U;
       break; // x^y
     case Key::Enter:
-      op = 0x25U;
-      break; // В↻
-    case Key::Plus:
       op = 0x0FU;
       break; // Вх
+    case Key::Plus:
+      op = 0x20U;
+      break; // π
     default:
       break;
     }
@@ -1371,7 +1380,7 @@ void Calculator::press_key(Key key) {
       write_prog_byte(0x50U);
     } else {
       commit_entry();
-      run_program();
+      last_run_status_ = run_program();
     }
     return;
   case Key::Store:

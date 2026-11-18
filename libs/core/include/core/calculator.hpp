@@ -58,6 +58,9 @@ public:
   /// Автоматичне виконання програми з поточного кроку PC до С/П, ЕГГОГ або ліміту кроків
   RunStatus run_program(std::size_t max_steps = 100000);
 
+  /// Чим закінчився останній пуск клавішею С/П у цьому натисканні. Зчитування знімає позначку.
+  [[nodiscard]] std::optional<RunStatus> take_run_status() noexcept;
+
   /// Виконання одного конкретного коду операції в режимі обчислень
   void execute_opcode(std::uint8_t opcode, std::optional<std::uint8_t> arg_byte = std::nullopt);
 
@@ -165,6 +168,7 @@ private:
   bool dark_{false};
   bool stack_lift_{true};
   std::size_t steps_executed_{0};
+  std::optional<RunStatus> last_run_status_;
 
   // Стан генератора псевдовипадкових чисел (К СЧ)
   std::uint64_t rng_state_{0x40406700ULL};

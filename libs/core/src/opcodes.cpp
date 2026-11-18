@@ -38,7 +38,7 @@ constexpr std::array<KeyInfo, kKeyCount> kAllKeys = {{
   {Key::D4, 3, 0, "4", "sin⁻¹", "|x|", "4", "4", std::uint8_t{4}},
   {Key::D5, 3, 1, "5", "cos⁻¹", "ЗН", "5", "5", std::uint8_t{5}},
   {Key::D6, 3, 2, "6", "tg⁻¹", "°→′", "6", "6", std::uint8_t{6}},
-  {Key::Plus, 3, 3, "+", "Вх", "′→°", "", "+", std::nullopt},
+  {Key::Plus, 3, 3, "+", "π", "′→°", "", "+", std::nullopt},
   {Key::Multiply, 3, 4, "×", "x²", "", "", "*", std::nullopt},
 
   // Ряд 5
@@ -46,11 +46,11 @@ constexpr std::array<KeyInfo, kKeyCount> kAllKeys = {{
   {Key::D2, 4, 1, "2", "lg", "", "2", "2", std::uint8_t{2}},
   {Key::D3, 4, 2, "3", "ln", "°→′″", "3", "3", std::uint8_t{3}},
   {Key::Swap, 4, 3, "↔", "xʸ", "′″→°", "", "↔", std::nullopt},
-  {Key::Enter, 4, 4, "В↑", "В↻", "СЧ", "e", "В↑", std::uint8_t{14}},
+  {Key::Enter, 4, 4, "В↑", "Вх", "СЧ", "e", "В↑", std::uint8_t{14}},
 
   // Ряд 6
   {Key::D0, 5, 0, "0", "10ˣ", "НОП", "0", "0", std::uint8_t{0}},
-  {Key::Dot, 5, 1, ".", "π", "∧", "a", ".", std::uint8_t{10}},
+  {Key::Dot, 5, 1, ".", "В↻", "∧", "a", ".", std::uint8_t{10}},
   {Key::Sign, 5, 2, "/-/", "АВТ", "∨", "b", "/-/", std::uint8_t{11}},
   {Key::Exp, 5, 3, "ВП", "ПРГ", "⊕", "c", "ВП", std::uint8_t{12}},
   {Key::ClearX, 5, 4, "Сх", "CF", "инв", "d", "Сх", std::uint8_t{13}},
@@ -1431,6 +1431,10 @@ AssembleResult assemble_program(std::string_view source) {
     res.ok = false;
     res.error_line = line_num;
     res.error_message = std::format("Рядок {}: невідома команда або токен '{}'", line_num, tok);
+    if (tok.size() == 2) {
+      res.error_message +=
+        ". Два знаки на кшталт 90 — це код команди, не цифри 9 і 0. Дев'яносто пишіть як 9 0";
+    }
     return res;
   }
 

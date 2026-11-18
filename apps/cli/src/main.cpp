@@ -3,15 +3,24 @@
 #include "core/presets.hpp"
 #include "core/types.hpp"
 
+#include <algorithm>
+#include <array>
+#include <cerrno>
 #include <clocale>
+#include <csignal>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <print>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include <poll.h>
+#include <termios.h>
+#include <unistd.h>
 
 namespace {
 
@@ -117,8 +126,37 @@ std::string_view trim_sv(std::string_view sv) noexcept {
   return sv;
 }
 
+[[nodiscard]] bool program_has_stop(const Calculator &calc) noexcept {
+  for (const std::uint8_t op : calc.program_memory()) {
+    if (op == 0x50U) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void print_run_outcome(const Calculator &calc, mk61::core::RunStatus status) {
+  using mk61::core::RunStatus;
+  switch (status) {
+  case RunStatus::StoppedAtSP:
+    std::println("Зупинка на команді С/П.");
+    break;
+  case RunStatus::Error:
+    std::println("Аварійна зупинка: ЕГГОГ.");
+    break;
+  case RunStatus::StepLimitReached:
+    if (!program_has_stop(calc)) {
+      std::println("Зупинено на ліміті 100000 кроків. У пам'яті немає команди С/П, "
+                   "тож калькулятор повторював цифру 0.");
+    } else {
+      std::println("Зупинено: досягнуто ліміту 100000 кроків.");
+    }
+    break;
+  }
+}
+
 void print_panel(const Calculator &calc) {
-  constexpr std::size_t kInnerW = 68;
+  constexpr std::size_t kInnerW = 72;
   const auto disp = calc.display();
   const auto mode_str = (calc.operating_mode() == OperatingMode::Automatic) ? "АВТ" : "ПРГ";
   const auto pc_str = mk61::core::format_step_address(calc.pc());
@@ -352,8 +390,7 @@ F
 +
   Писати: +
   Додавання Y + X.
-  F +  — повернути попереднє значення з X1 на індикатор. Ним користуються,
-         коли дію натиснули не ту і хочуть аргумент назад.
+  F +  — занести π (3.1415926), стек при цьому піднімається.
   К +  — ′→° : мінути у частки градуса. 12.30 стає 12.5.
          Якщо мінут 60 або більше — ЕГГОГ.
 
@@ -395,7 +432,8 @@ F
   Писати: В↑    ^    ENT    ENTER
   Піднімає стек: X копіюється в Y. Наступне введене число замінить X
   і вдруге стек не підніме. Без В↑ між двома числами друге зітре перше.
-  F В↑  — прокрутити стек по колу, щоб подивитися Z і T.
+  F В↑  — повернути попереднє значення з X1 на індикатор. Ним користуються,
+          коли дію натиснули не ту і хочуть аргумент назад.
   К В↑  — випадкове число від 0 до 1, не включаючи 1.
           Перше після ввімкнення — 0.404067.
           Старе X переходить у X1. Y, Z і T на місці.
@@ -413,7 +451,7 @@ F
 .
   Писати: .    ,
   Десяткова крапка.
-  F .  — занести π (3.1415926), стек при цьому піднімається.
+  F .  — прокрутити стек по колу, щоб подивитися Z і T.
   К .  — порозрядне І. Результат у X, Y не опускається. Вигляд 8.xxxxxxx
   Після Х→П або П→Х це регістр a. На індикаторі його номер виглядає як «-».
   Крапка першою цифрою адреси — це не дріб, а кроки 100..104:
@@ -496,12 +534,13 @@ void print_presets() {
 void print_startup_banner() {
   constexpr std::size_t kInnerW = 68;
   const std::string dline = repeat_utf8("═", kInnerW);
-  const std::array<std::string_view, 5> lines = {
+  const std::array<std::string_view, 6> lines = {
     " • Клавіші — слова в рядку, потім Enter. Живого натискання немає.",
     " • Рахунок: 2 В↑ 3 +    степінь: 2 ^ 10 F ↔    sin: :deg і 30 F 7",
     " • Приклади: :p , потім :p 1 , потім 2026 В/О С/П",
     " • Програма: :asm | лістинг :l | крок :s | регістри :r",
     " • Кожна клавіша: :keys    довідка: :help    вихід: :q",
+    " • Стрілки вгору і вниз — попередні рядки.",
   };
   std::println("╔{}╗", dline);
   std::println("║{}║",
@@ -523,6 +562,8 @@ void print_repl_help() {
 
   Після запрошення МК-61 [АВТ | PC=00]> пишуть слова через пробіл.
   Enter виконує їх зліва направо, ніби ці клавіші натиснули на корпусі.
+  Стрілка вгору показує попередній рядок, стрілка вниз — наступний.
+  Ліворуч і праворуч рухають курсор у рядку, Backspace стирає символ.
 
   Один рядок і чотири окремі рядки — те саме:
     2 В↑ 3 +
@@ -601,6 +642,8 @@ void print_repl_help() {
     F L0 loop
     С/П
   В один рядок те саме: :asm Х→П 0 1 loop: П→Х 0 * F L0 loop С/П
+  Два знаки, які читаються як шістнадцятковий код (90), — це одна команда.
+  Дев'яносто пишіть окремо: 9 0.
 
   :l    лістинг з поясненням кожного кроку
   :g    та сама програма таблицею 10×10
@@ -769,6 +812,425 @@ bool handle_reg_assignment(Calculator &calc, std::string_view spec) {
   return true;
 }
 
+// Термінал у канонічному режимі сам малює ^[[A замість попереднього рядка.
+// Поки читаємо запрошення, вимикаємо канонічний ввід і ведемо історію самі.
+termios g_saved_termios{};
+volatile sig_atomic_t g_console_stop = 0;
+bool g_console_raw = false;
+
+void restore_console_terminal() noexcept {
+  if (!g_console_raw) {
+    return;
+  }
+  tcsetattr(STDIN_FILENO, TCSANOW, &g_saved_termios);
+  g_console_raw = false;
+}
+
+void on_console_signal(int sig) { g_console_stop = sig; }
+
+class ConsoleRawTerminal {
+public:
+  ConsoleRawTerminal() {
+    if (tcgetattr(STDIN_FILENO, &g_saved_termios) != 0) {
+      return;
+    }
+    termios raw = g_saved_termios;
+    raw.c_lflag &= static_cast<tcflag_t>(~(ICANON | ECHO));
+    raw.c_cc[VMIN] = 1;
+    raw.c_cc[VTIME] = 0;
+    if (tcsetattr(STDIN_FILENO, TCSANOW, &raw) != 0) {
+      return;
+    }
+    g_console_raw = true;
+    install(SIGINT, &old_int_);
+    install(SIGTERM, &old_term_);
+    active_ = true;
+  }
+
+  ~ConsoleRawTerminal() { release(); }
+
+  ConsoleRawTerminal(const ConsoleRawTerminal &) = delete;
+  ConsoleRawTerminal &operator=(const ConsoleRawTerminal &) = delete;
+
+  [[nodiscard]] bool active() const noexcept { return active_; }
+
+  void release() noexcept {
+    if (!active_) {
+      return;
+    }
+    restore_console_terminal();
+    sigaction(SIGINT, &old_int_, nullptr);
+    sigaction(SIGTERM, &old_term_, nullptr);
+    active_ = false;
+  }
+
+private:
+  static void install(int sig, struct sigaction *previous) {
+    struct sigaction next{};
+    next.sa_handler = on_console_signal;
+    sigemptyset(&next.sa_mask);
+    next.sa_flags = 0;
+    sigaction(sig, &next, previous);
+  }
+
+  struct sigaction old_int_{};
+  struct sigaction old_term_{};
+  bool active_{false};
+};
+
+[[nodiscard]] std::size_t utf8_prefix_len(unsigned char lead) noexcept {
+  if ((lead & 0x80U) == 0U) {
+    return 1;
+  }
+  if ((lead & 0xE0U) == 0xC0U) {
+    return 2;
+  }
+  if ((lead & 0xF0U) == 0xE0U) {
+    return 3;
+  }
+  if ((lead & 0xF8U) == 0xF0U) {
+    return 4;
+  }
+  return 1;
+}
+
+[[nodiscard]] std::size_t utf8_prev_boundary(std::string_view text, std::size_t cursor) noexcept {
+  if (cursor == 0 || cursor > text.size()) {
+    return 0;
+  }
+  std::size_t i = cursor - 1;
+  while (i > 0 && (static_cast<unsigned char>(text[i]) & 0xC0U) == 0x80U) {
+    --i;
+  }
+  return i;
+}
+
+[[nodiscard]] std::size_t utf8_next_boundary(std::string_view text, std::size_t cursor) noexcept {
+  if (cursor >= text.size()) {
+    return text.size();
+  }
+  const std::size_t next = cursor + utf8_prefix_len(static_cast<unsigned char>(text[cursor]));
+  return next > text.size() ? text.size() : next;
+}
+
+[[nodiscard]] std::size_t utf8_columns(std::string_view text) noexcept {
+  std::size_t cols = 0;
+  for (const char ch : text) {
+    if ((static_cast<unsigned char>(ch) & 0xC0U) != 0x80U) {
+      ++cols;
+    }
+  }
+  return cols;
+}
+
+enum class ConsoleKeyKind {
+  Text,
+  Enter,
+  Backspace,
+  Delete,
+  Left,
+  Right,
+  Up,
+  Down,
+  Home,
+  End,
+  Eof,
+  Stop
+};
+
+struct ConsoleKey {
+  ConsoleKeyKind kind{ConsoleKeyKind::Text};
+  std::string text;
+};
+
+[[nodiscard]] bool wait_console_input(int timeout_ms) {
+  pollfd pfd{};
+  pfd.fd = STDIN_FILENO;
+  pfd.events = POLLIN;
+  while (true) {
+    const int ready = ::poll(&pfd, static_cast<nfds_t>(1), timeout_ms);
+    if (ready > 0) {
+      return true;
+    }
+    if (ready == 0 || errno != EINTR) {
+      return false;
+    }
+    if (g_console_stop != 0) {
+      return false;
+    }
+  }
+}
+
+[[nodiscard]] std::optional<unsigned char> read_console_byte() {
+  unsigned char byte = 0;
+  while (true) {
+    const ssize_t got = ::read(STDIN_FILENO, &byte, sizeof(byte));
+    if (got == 1) {
+      return byte;
+    }
+    if (got == 0) {
+      return std::nullopt;
+    }
+    if (errno != EINTR) {
+      return std::nullopt;
+    }
+    if (g_console_stop != 0) {
+      return std::nullopt;
+    }
+  }
+}
+
+[[nodiscard]] ConsoleKeyKind csi_key(std::string_view seq) {
+  if (seq.empty()) {
+    return ConsoleKeyKind::Text;
+  }
+  const char final = seq.back();
+  if (final == '~') {
+    if (seq.find('3') != std::string_view::npos) {
+      return ConsoleKeyKind::Delete;
+    }
+    if (!seq.empty() && (seq.front() == '1' || seq.front() == '7')) {
+      return ConsoleKeyKind::Home;
+    }
+    if (!seq.empty() && (seq.front() == '4' || seq.front() == '8')) {
+      return ConsoleKeyKind::End;
+    }
+    return ConsoleKeyKind::Text;
+  }
+  switch (final) {
+  case 'A':
+    return ConsoleKeyKind::Up;
+  case 'B':
+    return ConsoleKeyKind::Down;
+  case 'C':
+    return ConsoleKeyKind::Right;
+  case 'D':
+    return ConsoleKeyKind::Left;
+  case 'H':
+    return ConsoleKeyKind::Home;
+  case 'F':
+    return ConsoleKeyKind::End;
+  default:
+    return ConsoleKeyKind::Text;
+  }
+}
+
+[[nodiscard]] ConsoleKey read_console_key() {
+  const auto lead = read_console_byte();
+  if (!lead.has_value()) {
+    if (g_console_stop != 0) {
+      return ConsoleKey{ConsoleKeyKind::Stop, {}};
+    }
+    return ConsoleKey{ConsoleKeyKind::Eof, {}};
+  }
+  const unsigned char ch = *lead;
+  if (ch == '\n' || ch == '\r') {
+    return ConsoleKey{ConsoleKeyKind::Enter, {}};
+  }
+  if (ch == 0x7FU || ch == 0x08U) {
+    return ConsoleKey{ConsoleKeyKind::Backspace, {}};
+  }
+  if (ch == 0x04U) {
+    return ConsoleKey{ConsoleKeyKind::Eof, {}};
+  }
+  if (ch == 0x01U) {
+    return ConsoleKey{ConsoleKeyKind::Home, {}};
+  }
+  if (ch == 0x05U) {
+    return ConsoleKey{ConsoleKeyKind::End, {}};
+  }
+  if (ch != 0x1BU) {
+    std::string text(1, static_cast<char>(ch));
+    const std::size_t need = utf8_prefix_len(ch);
+    for (std::size_t i = 1; i < need; ++i) {
+      const auto next = read_console_byte();
+      if (!next.has_value()) {
+        break;
+      }
+      text.push_back(static_cast<char>(*next));
+    }
+    return ConsoleKey{ConsoleKeyKind::Text, std::move(text)};
+  }
+
+  if (!wait_console_input(30)) {
+    return ConsoleKey{ConsoleKeyKind::Text, {}};
+  }
+  std::string seq;
+  while (seq.size() < 16 && wait_console_input(seq.empty() ? 30 : 5)) {
+    const auto next = read_console_byte();
+    if (!next.has_value()) {
+      break;
+    }
+    seq.push_back(static_cast<char>(*next));
+    const auto last = static_cast<unsigned char>(seq.back());
+    const bool csi_done = seq.size() >= 2 && seq.front() == '[' && last >= 0x40U && last <= 0x7EU;
+    const bool ss3_done = seq.front() == 'O' && seq.size() >= 2;
+    if (csi_done || ss3_done) {
+      break;
+    }
+  }
+  std::string_view body = seq;
+  if (!body.empty() && (body.front() == '[' || body.front() == 'O')) {
+    body.remove_prefix(1);
+  }
+  const ConsoleKeyKind kind = csi_key(body);
+  if (kind == ConsoleKeyKind::Text) {
+    return ConsoleKey{ConsoleKeyKind::Text, {}};
+  }
+  return ConsoleKey{kind, {}};
+}
+
+void redraw_console_line(std::string_view prompt, std::string_view buf, std::size_t cursor) {
+  const std::size_t tail = utf8_columns(buf.substr(std::min(cursor, buf.size())));
+  std::print("\r{}{}", prompt, buf);
+  std::print("\033[K");
+  if (tail > 0) {
+    std::print("\033[{}D", tail);
+  }
+  std::cout.flush();
+}
+
+class ConsoleLineEditor {
+public:
+  [[nodiscard]] std::optional<std::string> read_line(std::string_view prompt) {
+    std::print("{}", prompt);
+    std::cout.flush();
+    if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO)) {
+      std::string line;
+      if (!std::getline(std::cin, line)) {
+        return std::nullopt;
+      }
+      remember(line);
+      return line;
+    }
+
+    ConsoleRawTerminal raw;
+    if (!raw.active()) {
+      std::string line;
+      if (!std::getline(std::cin, line)) {
+        return std::nullopt;
+      }
+      remember(line);
+      return line;
+    }
+
+    std::string buf;
+    std::size_t cursor = 0;
+    std::size_t hist_pos = history_.size();
+    std::string draft;
+    while (true) {
+      const ConsoleKey key = read_console_key();
+      if (key.kind == ConsoleKeyKind::Stop) {
+        const int sig = g_console_stop;
+        g_console_stop = 0;
+        raw.release();
+        std::signal(sig, SIG_DFL);
+        std::raise(sig);
+        return std::nullopt;
+      }
+      if (key.kind == ConsoleKeyKind::Eof) {
+        if (buf.empty()) {
+          return std::nullopt;
+        }
+        erase_forward(buf, cursor);
+        redraw_console_line(prompt, buf, cursor);
+        continue;
+      }
+      if (key.kind == ConsoleKeyKind::Enter) {
+        std::print("\n");
+        std::cout.flush();
+        remember(buf);
+        return buf;
+      }
+      if (key.kind == ConsoleKeyKind::Up) {
+        if (history_.empty() || hist_pos == 0) {
+          continue;
+        }
+        if (hist_pos == history_.size()) {
+          draft = buf;
+        }
+        --hist_pos;
+        buf = history_[hist_pos];
+        cursor = buf.size();
+        redraw_console_line(prompt, buf, cursor);
+        continue;
+      }
+      if (key.kind == ConsoleKeyKind::Down) {
+        if (hist_pos >= history_.size()) {
+          continue;
+        }
+        ++hist_pos;
+        buf = hist_pos == history_.size() ? draft : history_[hist_pos];
+        cursor = buf.size();
+        redraw_console_line(prompt, buf, cursor);
+        continue;
+      }
+      if (key.kind == ConsoleKeyKind::Left) {
+        cursor = utf8_prev_boundary(buf, cursor);
+        redraw_console_line(prompt, buf, cursor);
+        continue;
+      }
+      if (key.kind == ConsoleKeyKind::Right) {
+        cursor = utf8_next_boundary(buf, cursor);
+        redraw_console_line(prompt, buf, cursor);
+        continue;
+      }
+      if (key.kind == ConsoleKeyKind::Home) {
+        cursor = 0;
+        redraw_console_line(prompt, buf, cursor);
+        continue;
+      }
+      if (key.kind == ConsoleKeyKind::End) {
+        cursor = buf.size();
+        redraw_console_line(prompt, buf, cursor);
+        continue;
+      }
+      if (key.kind == ConsoleKeyKind::Backspace) {
+        if (cursor == 0) {
+          continue;
+        }
+        const std::size_t prev = utf8_prev_boundary(buf, cursor);
+        buf.erase(prev, cursor - prev);
+        cursor = prev;
+        redraw_console_line(prompt, buf, cursor);
+        continue;
+      }
+      if (key.kind == ConsoleKeyKind::Delete) {
+        erase_forward(buf, cursor);
+        redraw_console_line(prompt, buf, cursor);
+        continue;
+      }
+      if (key.kind == ConsoleKeyKind::Text && !key.text.empty() &&
+          static_cast<unsigned char>(key.text.front()) >= 0x20U) {
+        buf.insert(cursor, key.text);
+        cursor += key.text.size();
+        redraw_console_line(prompt, buf, cursor);
+      }
+    }
+  }
+
+private:
+  static void erase_forward(std::string &buf, std::size_t cursor) {
+    if (cursor >= buf.size()) {
+      return;
+    }
+    const std::size_t next = utf8_next_boundary(buf, cursor);
+    buf.erase(cursor, next - cursor);
+  }
+
+  void remember(const std::string &line) {
+    if (trim_sv(line).empty()) {
+      return;
+    }
+    if (!history_.empty() && history_.back() == line) {
+      return;
+    }
+    history_.push_back(line);
+  }
+
+  std::vector<std::string> history_;
+};
+
 } // namespace
 
 int main(int argc, char *argv[]) {
@@ -857,10 +1319,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (do_run) {
-    const auto status = calc.run_program();
-    if (status == mk61::core::RunStatus::StepLimitReached) {
-      std::println(stderr, "Увага: перевищено ліміт кроків виконання програми.");
-    }
+    print_run_outcome(calc, calc.run_program());
   }
 
   if (batch_mode) {
@@ -871,16 +1330,19 @@ int main(int argc, char *argv[]) {
   print_startup_banner();
   print_panel(calc);
 
+  ConsoleLineEditor editor;
   std::string line;
   while (true) {
     const auto mode_tag = (calc.operating_mode() == OperatingMode::Automatic) ? "АВТ" : "ПРГ";
-    std::print("\nМК-61 [{} | PC={}]> ", mode_tag, mk61::core::format_step_address(calc.pc()));
-    std::cout.flush();
-    if (!std::getline(std::cin, line)) {
+    const std::string prompt =
+      std::format("МК-61 [{} | PC={}]> ", mode_tag, mk61::core::format_step_address(calc.pc()));
+    std::println("");
+    const auto typed = editor.read_line(prompt);
+    if (!typed.has_value()) {
       std::println("");
       break;
     }
-
+    line = *typed;
     const std::string_view sv = trim_sv(line);
     if (sv.empty()) {
       print_panel(calc);
@@ -968,10 +1430,7 @@ int main(int argc, char *argv[]) {
     if (sv == ":run") {
       calc.set_operating_mode(OperatingMode::Automatic);
       const auto st = calc.run_program();
-      if (st == mk61::core::RunStatus::StepLimitReached) {
-        std::println("Зупинено: досягнуто ліміту 100000 кроків.");
-      }
-      print_panel(calc);
+      print_run_outcome(calc, calc.run_program());
       continue;
     }
     if (sv == ":step" || sv == ":s" || sv.starts_with(":step ") || sv.starts_with(":s ")) {
@@ -1072,6 +1531,9 @@ int main(int argc, char *argv[]) {
       std::println("Помилка: {} (введіть ':help' для списку клавіш і команд)", err);
     }
     print_panel(calc);
+    if (const auto status = calc.take_run_status(); status.has_value()) {
+      print_run_outcome(calc, *status);
+    }
   }
 
   return 0;
