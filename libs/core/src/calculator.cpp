@@ -1614,9 +1614,8 @@ DisplayState Calculator::display() const {
   }
 
   if (op_mode_ == OperatingMode::Programming) {
-    // У режимі ПРГ на індикаторі справа виводиться адреса поточного кроку (або кроку, що
-    // редагується), а зліва направо/справа наліво — коди 3 попередніх кроків: [PC-3] [PC-2] [PC-1]
-    // [PC]
+    // У режимі ПРГ справа — адреса поточного кроку. Зліва направо коди трьох
+    // попередніх: [PC-1] [PC-2] [PC-3], потім адреса. Щойно записана команда — крайня зліва.
     const int disp_pc = (prefix_ == PrefixState::WaitAddr1 || prefix_ == PrefixState::WaitAddr2)
                           ? pending_jump_step_
                           : pc_;

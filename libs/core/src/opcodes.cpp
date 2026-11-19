@@ -15,17 +15,18 @@ namespace {
 constexpr std::array<KeyInfo, kKeyCount> kAllKeys = {{
   // Ряд 1
   {Key::F, 0, 0, "F", "", "", "", "F", std::nullopt},
-  {Key::StepFwd, 0, 1, "ШГ→", "x<0", "x<0", "", "ШГ→", std::nullopt},
-  {Key::StepBack, 0, 2, "←ШГ", "x=0", "x=0", "", "←ШГ", std::nullopt},
-  {Key::Return, 0, 3, "В/О", "x≥0", "x≥0", "", "В/О", std::nullopt},
-  {Key::RunStop, 0, 4, "С/П", "x≠0", "x≠0", "", "С/П", std::nullopt},
+  {Key::StepFwd, 0, 1, "ШГ→", "x<0", "", "", "ШГ→", std::nullopt},
+  {Key::StepBack, 0, 2, "←ШГ", "x=0", "", "", "←ШГ", std::nullopt},
+  {Key::Return, 0, 3, "В/О", "x≥0", "", "", "В/О", std::nullopt},
+  {Key::RunStop, 0, 4, "С/П", "x≠0", "", "", "С/П", std::nullopt},
 
   // Ряд 2
   {Key::K, 1, 0, "К", "", "", "", "К", std::nullopt},
-  {Key::Store, 1, 1, "Х→П", "L1", "Х→П", "", "Х→П", std::nullopt},
-  {Key::Recall, 1, 2, "П→Х", "L0", "П→Х", "", "П→Х", std::nullopt},
-  {Key::Goto, 1, 3, "БП", "L2", "БП", "", "БП", std::nullopt},
-  {Key::Gosub, 1, 4, "ПП", "L3", "ПП", "", "ПП", std::nullopt},
+  // На корпусі Х→П стоїть праворуч від П→Х. Індекс у масиві лишається за enum Key.
+  {Key::Store, 1, 2, "Х→П", "L1", "", "", "Х→П", std::nullopt},
+  {Key::Recall, 1, 1, "П→Х", "L0", "", "", "П→Х", std::nullopt},
+  {Key::Goto, 1, 3, "БП", "L2", "", "", "БП", std::nullopt},
+  {Key::Gosub, 1, 4, "ПП", "L3", "", "", "ПП", std::nullopt},
 
   // Ряд 3
   {Key::D7, 2, 0, "7", "sin", "[x]", "7", "7", std::uint8_t{7}},

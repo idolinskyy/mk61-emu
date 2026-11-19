@@ -773,6 +773,12 @@ private:
       k_lbl->setFixedHeight(14);
       k_lbl->setStyleSheet(QStringLiteral("color: #4fc3f7; font-size: 11px; font-weight: bold;"));
       k_lbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+      // На корпусі синього напису немає, якщо К лише змінює вже підписану клавішу.
+      // Тоді жовтий напис стоїть по центру, як над ШГ→ чи П→Х.
+      if (kinfo.k_label.empty()) {
+        f_lbl->setAlignment(Qt::AlignCenter);
+        k_lbl->hide();
+      }
       top_labels->addWidget(f_lbl);
       top_labels->addWidget(k_lbl);
       cell_layout->addLayout(top_labels);
@@ -1540,7 +1546,17 @@ private:
       <h2>Усі 30 клавіш корпуса</h2>
       <p>Три колонки праворуч — три ролі однієї кнопки. Жовте потребує попередньої
       <span class="kb">&nbsp;<span class="kf">&nbsp;F&nbsp;</span>&nbsp;</span>, синє — попередньої <span class="kb">&nbsp;<span class="kk">&nbsp;К&nbsp;</span>&nbsp;</span>.
-      Де вказано «клавіша ПК», її можна натиснути замість кліка.</p>
+      Де вказано «клавіша ПК», її можна натиснути замість кліка.
+      На <span class="kb">&nbsp;<span class="kop">&nbsp;ШГ→&nbsp;</span>&nbsp;</span>,
+      <span class="kb">&nbsp;<span class="kop">&nbsp;←ШГ&nbsp;</span>&nbsp;</span>,
+      <span class="kb">&nbsp;<span class="kop">&nbsp;В/О&nbsp;</span>&nbsp;</span>,
+      <span class="kb">&nbsp;<span class="kop">&nbsp;С/П&nbsp;</span>&nbsp;</span>,
+      <span class="kb">&nbsp;<span class="kop">&nbsp;Х→П&nbsp;</span>&nbsp;</span>,
+      <span class="kb">&nbsp;<span class="kop">&nbsp;П→Х&nbsp;</span>&nbsp;</span>,
+      <span class="kb">&nbsp;<span class="kop">&nbsp;БП&nbsp;</span>&nbsp;</span> і
+      <span class="kb">&nbsp;<span class="kop">&nbsp;ПП&nbsp;</span>&nbsp;</span>
+      синього напису на корпусі немає: <span class="kb">&nbsp;<span class="kk">&nbsp;К&nbsp;</span>&nbsp;</span>
+      перед тією самою кнопкою бере адресу або номер регістра з іншого регістра.</p>
       <table>
         <tr>
           <th>Клавіша</th><th>ПК</th><th>Сама кнопка</th><th>Після F</th><th>Після К</th>
@@ -1553,53 +1569,53 @@ private:
           <td><span class="kb">&nbsp;<span class="kop">&nbsp;ШГ→&nbsp;</span>&nbsp;</span></td><td>→</td>
           <td>АВТ: виконати один крок. ПРГ: перейти вперед, нічого не виконуючи.</td>
           <td><span class="ffn">x&lt;0</span> далі дві цифри адреси. Від'ємний X — ідемо далі, інакше стрибок.</td>
-          <td><span class="kfn">x&lt;0</span> те саме, адреса з регістра, який натиснете слідом.</td>
+          <td>Та сама умова. Адреса з регістра, який натиснете слідом.</td>
         </tr>
         <tr>
           <td><span class="kb">&nbsp;<span class="kop">&nbsp;←ШГ&nbsp;</span>&nbsp;</span></td><td>←</td>
           <td>ПРГ: крок назад. В АВТ сама клавіша нічого не робить.</td>
-          <td><span class="ffn">x=0</span> далі адреса.</td>
-          <td><span class="kfn">x=0</span> непряме.</td>
+          <td><span class="ffn">x=0</span> далі адреса. Нуль — ідемо далі, інакше стрибок.</td>
+          <td>Та сама умова. Адреса з регістра.</td>
         </tr>
         <tr>
           <td><span class="kb">&nbsp;<span class="kop">&nbsp;В/О&nbsp;</span>&nbsp;</span></td><td>Home</td>
           <td>АВТ: поставити програму на 00. ПРГ: записати повернення з підпрограми.</td>
-          <td><span class="ffn">x≥0</span> далі адреса.</td>
-          <td><span class="kfn">x≥0</span> непряме.</td>
+          <td><span class="ffn">x≥0</span> далі адреса. X ≥ 0 — ідемо далі, від'ємний — стрибок.</td>
+          <td>Та сама умова. Адреса з регістра.</td>
         </tr>
         <tr>
           <td><span class="kb">&nbsp;<span class="kop">&nbsp;С/П&nbsp;</span>&nbsp;</span></td><td>пробіл</td>
           <td>АВТ: пуск з поточного кроку до зупинки в програмі. ПРГ: записати зупинку.</td>
-          <td><span class="ffn">x≠0</span> далі адреса.</td>
-          <td><span class="kfn">x≠0</span> непряме.</td>
+          <td><span class="ffn">x≠0</span> далі адреса. X не нуль — ідемо далі, нуль — стрибок.</td>
+          <td>Та сама умова. Адреса з регістра.</td>
         </tr>
         <tr>
           <td><span class="kb">&nbsp;<span class="kk">&nbsp;К&nbsp;</span>&nbsp;</span></td><td>K</td>
           <td>Синій префікс. Чекає наступну клавішу.</td><td>—</td><td>—</td>
         </tr>
         <tr>
-          <td><span class="kb">&nbsp;<span class="kop">&nbsp;Х→П&nbsp;</span>&nbsp;</span></td><td>S</td>
-          <td>Далі регістр 0..9 або a..e. X записується туди і лишається на індикаторі.</td>
-          <td><span class="ffn">L1</span> ціла частина R1 мінус 1, дріб лишається. Стрибок, доки ціла частина не нуль.</td>
-          <td><span class="kfn">Х→П</span> запис X у регістр, номер якого лежить в іншому регістрі.</td>
-        </tr>
-        <tr>
           <td><span class="kb">&nbsp;<span class="kop">&nbsp;П→Х&nbsp;</span>&nbsp;</span></td><td>R</td>
           <td>Далі регістр. Його вміст з'являється в X.</td>
           <td><span class="ffn">L0</span> цикл по регістру R0.</td>
-          <td><span class="kfn">П→Х</span> читання регістра за номером з іншого регістра.</td>
+          <td>Читання регістра за номером з іншого регістра.</td>
+        </tr>
+        <tr>
+          <td><span class="kb">&nbsp;<span class="kop">&nbsp;Х→П&nbsp;</span>&nbsp;</span></td><td>S</td>
+          <td>Далі регістр 0..9 або a..e. X записується туди і лишається на індикаторі.</td>
+          <td><span class="ffn">L1</span> ціла частина R1 мінус 1, дріб лишається. Стрибок, доки ціла частина не нуль.</td>
+          <td>Запис X у регістр, номер якого лежить в іншому регістрі.</td>
         </tr>
         <tr>
           <td><span class="kb">&nbsp;<span class="kop">&nbsp;БП&nbsp;</span>&nbsp;</span></td><td>G або B</td>
           <td>Безумовний перехід. Далі дві цифри адреси.</td>
           <td><span class="ffn">L2</span> цикл по регістру R2.</td>
-          <td><span class="kfn">БП</span> перехід за адресою з регістра.</td>
+          <td>Перехід за адресою з регістра.</td>
         </tr>
         <tr>
           <td><span class="kb">&nbsp;<span class="kop">&nbsp;ПП&nbsp;</span>&nbsp;</span></td><td>P</td>
           <td>Виклик підпрограми, далі адреса. Назад повертає <span class="kb">&nbsp;<span class="kop">&nbsp;В/О&nbsp;</span>&nbsp;</span> у програмі. Вкладень до п'яти.</td>
           <td><span class="ffn">L3</span> цикл по регістру R3.</td>
-          <td><span class="kfn">ПП</span> виклик за адресою з регістра.</td>
+          <td>Виклик за адресою з регістра.</td>
         </tr>
         <tr>
           <td><span class="kb">&nbsp;<span class="knum">&nbsp;7&nbsp;</span>&nbsp;</span></td><td>7</td>
@@ -1665,13 +1681,13 @@ private:
           <td><span class="kb">&nbsp;<span class="knum">&nbsp;1&nbsp;</span>&nbsp;</span></td><td>1</td>
           <td>Цифра 1, або регістр R1.</td>
           <td><span class="ffn">eˣ</span></td>
-          <td><span class="kfn">НОП</span> порожній крок, код 55.</td>
+          <td>Синього напису немає. Команда все одно є: порожній крок, код 55.</td>
         </tr>
         <tr>
           <td><span class="kb">&nbsp;<span class="knum">&nbsp;2&nbsp;</span>&nbsp;</span></td><td>2</td>
           <td>Цифра 2, або регістр R2.</td>
           <td><span class="ffn">lg</span> з нуля і від'ємного — ЕГГОГ.</td>
-          <td><span class="kfn">НОП</span> порожній крок, код 56.</td>
+          <td>Синього напису немає. Команда все одно є: порожній крок, код 56.</td>
         </tr>
         <tr>
           <td><span class="kb">&nbsp;<span class="knum">&nbsp;3&nbsp;</span>&nbsp;</span></td><td>3</td>
@@ -1730,27 +1746,176 @@ private:
       а номер регістра або адреса. Адреса 00..99 — дві цифри. Кроки 100..104 на індикаторі
       виглядають як −0..−4 і набираються крапкою, потім 0..4.</p>
 
-      <h2>Програма у цьому вікні</h2>
+      <h2>Два режими: АВТ і ПРГ</h2>
+      <p>Під індикатором два перемикачі. Лівий, <span class="kb">&nbsp;<span class="kop">&nbsp;Р&nbsp;</span>&nbsp;</span>
+      <span class="kb">&nbsp;<span class="kop">&nbsp;ГРД&nbsp;</span>&nbsp;</span>
+      <span class="kb">&nbsp;<span class="kop">&nbsp;Г&nbsp;</span>&nbsp;</span>, обирає одиниці кута.
+      Він діє і в ручному рахунку, і коли ту саму тригонометрію виконує програма.
+      Правий, <span class="ffn">АВТ</span> / <span class="ffn">ПРГ</span>, змінює сенс майже кожної клавіші.
+      Увімкнути АВТ можна й так: <span class="kb">&nbsp;<span class="kf">&nbsp;F&nbsp;</span>&nbsp;</span>
+      <span class="kb">&nbsp;<span class="knum">&nbsp;/-/&nbsp;</span>&nbsp;</span>.
+      Увімкнути ПРГ: <span class="kb">&nbsp;<span class="kf">&nbsp;F&nbsp;</span>&nbsp;</span>
+      <span class="kb">&nbsp;<span class="knum">&nbsp;ВП&nbsp;</span>&nbsp;</span>.
+      Ці дві пари в пам'ять програми не пишуться, вони лише перемикають режим.
+      Число, яке вже стоїть у стеку, при перемиканні нікуди не дівається: у ПРГ індикатор просто
+      показує кроки, а в АВТ знову показує X.</p>
+
+      <h3>АВТ: рахувати руками і пускати готову програму</h3>
+      <p>Клавіша одразу виконується. <span class="kb">&nbsp;<span class="kop">&nbsp;2&nbsp;</span>&nbsp;</span>
+      <span class="kb">&nbsp;<span class="kop">&nbsp;В↑&nbsp;</span>&nbsp;</span>
+      <span class="kb">&nbsp;<span class="knum">&nbsp;3&nbsp;</span>&nbsp;</span>
+      <span class="kb">&nbsp;<span class="kop">&nbsp;+&nbsp;</span>&nbsp;</span> дає 5 і нічого не записує в програму.</p>
       <ul>
-        <li>Перемикач <span class="ffn">АВТ</span> / <span class="ffn">ПРГ</span> під індикатором.
-            Те саме роблять <span class="kb">&nbsp;<span class="kf">&nbsp;F&nbsp;</span>&nbsp;</span> <span class="kb">&nbsp;<span class="knum">&nbsp;/-/&nbsp;</span>&nbsp;</span> і
-            <span class="kb">&nbsp;<span class="kf">&nbsp;F&nbsp;</span>&nbsp;</span> <span class="kb">&nbsp;<span class="knum">&nbsp;ВП&nbsp;</span>&nbsp;</span>.
-            В АВТ клавіші рахують і пускають програму. В ПРГ вони записуються в пам'ять.</li>
-        <li>Вкладка «Редактор програм» — інший спосіб. Оберіть приклад і «Завантажити»,
-            або впишіть мнемоніки чи таблицю 10×10 і натисніть «Записати в МК-61».
-            «Відкрити» і «Зберегти» працюють із файлом.</li>
-        <li>Один крок — <b>Крок (F10)</b> або <span class="kb">&nbsp;<span class="kop">&nbsp;ШГ→&nbsp;</span>&nbsp;</span> в АВТ.
-            С/П і автокрок (F5) беруть паузу зі списку поруч. «Як на МК-61» — у межах інструкції
-            калькулятора: арифметика до пів секунди, логарифм і тригонометрія до двох, степінь
-            до трьох з половиною. Поки команда рахується, індикатор спалахує: нуль, вісім цифр
-            мантиси X, код команди і літера Е. Потім знову звичайне число.</li>
-        <li>Точка зупину — подвійний клік по кроку у вкладці пам'яті або F9.
-            І пуск пробілом, і автокрок на ній зупиняються.</li>
-        <li><b>F12</b> або «Тільки МК-61» ховає бічну панель.
-            Кнопка «Про» біля рядка режиму — версія, час збірки і ліцензія.</li>
+        <li><span class="kb">&nbsp;<span class="kop">&nbsp;С/П&nbsp;</span>&nbsp;</span> (пробіл) пускає програму з того кроку, де зараз стоїть лічильник.
+            Зупинка — на команді <span class="kb">&nbsp;<span class="kop">&nbsp;С/П&nbsp;</span>&nbsp;</span> у самій програмі, на
+            <span class="vfd">ЕГГОГ</span>, на точці зупину або після 100&nbsp;000 кроків.
+            Рядок стану внизу пише, чим саме закінчилось.</li>
+        <li>Порожня пам'ять заповнена кодом <span class="vfd">00</span>. Це команда «цифра 0», не зупинка.
+            <span class="kb">&nbsp;<span class="kop">&nbsp;С/П&nbsp;</span>&nbsp;</span> на порожній програмі крутить нулі, доки не впреться в ліміт кроків.
+            Щоб був кінець, у програмі має стояти своє <span class="kb">&nbsp;<span class="kop">&nbsp;С/П&nbsp;</span>&nbsp;</span>.</li>
+        <li>Пуск саме з адреси 00 проминає цей крок, якщо там порожньо (<span class="vfd">00</span>) або стоїть
+            <span class="kb">&nbsp;<span class="kop">&nbsp;В/О&nbsp;</span>&nbsp;</span> (код <span class="vfd">52</span>).
+            Будь-яка інша команда на кроці 00 виконується. Один крок стрілкою цей пропуск не робить:
+            <span class="kb">&nbsp;<span class="kop">&nbsp;ШГ→&nbsp;</span>&nbsp;</span> виконує те, що лежить під лічильником, включно з кроком 00.</li>
+        <li><span class="kb">&nbsp;<span class="kop">&nbsp;В/О&nbsp;</span>&nbsp;</span> (Home) у цьому режимі нічого не пише і не рахує:
+            ставить лічильник на 00 і скидає стек повернень із підпрограм.
+            Кнопка «На 00» в панелі відлагодження теж ставить лічильник на 00.</li>
+        <li><span class="kb">&nbsp;<span class="kop">&nbsp;ШГ→&nbsp;</span>&nbsp;</span> (стрілка вправо) або «Крок (F10)» виконує рівно одну команду.
+            <span class="kb">&nbsp;<span class="kop">&nbsp;←ШГ&nbsp;</span>&nbsp;</span> в АВТ нічого не робить: назад по програмі ходять у ПРГ.
+            F10 спрацьовує навіть коли курсор стоїть у редакторі.</li>
+        <li>Автокрок (F5) іде з паузою зі списку швидкості біля кнопок відлагодження і стає на паузу
+            від повторного F5, від <span class="kb">&nbsp;<span class="kop">&nbsp;С/П&nbsp;</span>&nbsp;</span> у програмі і від точки зупину.
+            «Як на МК-61» тримає верхні межі з інструкції калькулятора: арифметика до пів секунди,
+            логарифм і тригонометрія до двох, степінь до трьох з половиною. На час кроку індикатор
+            спалахує так, як на живому МК-61 під час програми: нуль, вісім цифр мантиси X, код команди
+            і літера Е. «Миттєво» пауз не ставить.</li>
+        <li>Точка зупину — це позначка вікна, не байт програми. Подвійний клік по кроку у вкладці
+            «Таблиця пам'яті» або F9 на поточному кроці. І пробіл, і автокрок на ній зупиняються.</li>
       </ul>
-      <p>Далі — як влаштований сам калькулятор: індикатор, стек, функції і коди команд.
-      Умовний перехід працює навпаки, ніж у звичних мовах. Про це в розділі 6.</p>
+
+      <h3>ПРГ: писати програму з корпуса</h3>
+      <p>У ПРГ індикатор показує програму. Справа — адреса кроку, на якому ви стоїте:
+      <span class="vfd">00</span>…<span class="vfd">99</span>, далі <span class="vfd">−0</span>…<span class="vfd">−4</span>
+      (це кроки 100…104). Зліва — коди трьох попередніх кроків, не коду поточного.
+      Коли йдете <span class="kb">&nbsp;<span class="kop">&nbsp;ШГ→&nbsp;</span>&nbsp;</span> вперед, щойно записана команда з'являється зліва.
+      Числа X на цьому індикаторі немає,
+      поки не повернетесь в АВТ.</p>
+      <p>Майже кожна клавіша <b>записує свій код і зсуває лічильник на наступний крок</b>.
+      Вона нічого не рахує. Цифра <span class="kb">&nbsp;<span class="knum">&nbsp;1&nbsp;</span>&nbsp;</span>
+      у ПРГ — це команда «ввести цифру 1», а не число в регістрі X.
+      Дванадцять у програмі набирається тими самими клавішами, що й руками:
+      <span class="kb">&nbsp;<span class="knum">&nbsp;1&nbsp;</span>&nbsp;</span>
+      <span class="kb">&nbsp;<span class="knum">&nbsp;2&nbsp;</span>&nbsp;</span> — два окремі кроки.
+      Коли програма потім піде, ці кроки введуть число 12.</p>
+      <ul>
+        <li><span class="kb">&nbsp;<span class="kop">&nbsp;ШГ→&nbsp;</span>&nbsp;</span> і
+            <span class="kb">&nbsp;<span class="kop">&nbsp;←ШГ&nbsp;</span>&nbsp;</span> у ПРГ тільки ходять по кроках.
+            Вони нічого не записують і нічого не виконують. Так переглядають уже записане.</li>
+        <li>Щоб замінити команду, дійдіть <span class="kb">&nbsp;<span class="kop">&nbsp;←ШГ&nbsp;</span>&nbsp;</span> /
+            <span class="kb">&nbsp;<span class="kop">&nbsp;ШГ→&nbsp;</span>&nbsp;</span> на потрібний крок і натисніть нову клавішу.
+            Старий байт на цьому кроці замінюється, лічильник іде далі.
+            Сусідні кроки самі не стираються. Окремої клавіші «стерти всю програму» на корпусі немає:
+            порожній крок — це код <span class="vfd">00</span>.</li>
+        <li><span class="kb">&nbsp;<span class="kop">&nbsp;С/П&nbsp;</span>&nbsp;</span> записує зупинку (код <span class="vfd">50</span>).
+            <span class="kb">&nbsp;<span class="kop">&nbsp;В/О&nbsp;</span>&nbsp;</span> записує повернення з підпрограми (код <span class="vfd">52</span>),
+            а не стрибок на 00. На початок у цьому режимі повертаються стрілками.</li>
+        <li><span class="kb">&nbsp;<span class="kcx">&nbsp;Сх&nbsp;</span>&nbsp;</span> записує команду «стерти X». Програму вона не чистить.
+            <span class="kb">&nbsp;<span class="kf">&nbsp;F&nbsp;</span>&nbsp;</span> і
+            <span class="kb">&nbsp;<span class="kk">&nbsp;К&nbsp;</span>&nbsp;</span> тут теж префікси: наступна клавіша пише жовту або синю команду.
+            <span class="kb">&nbsp;<span class="kf">&nbsp;F&nbsp;</span>&nbsp;</span>
+            <span class="kb">&nbsp;<span class="kcx">&nbsp;Сх&nbsp;</span>&nbsp;</span> знімає жовтий префікс і в пам'ять не потрапляє.
+            <span class="kb">&nbsp;<span class="kk">&nbsp;К&nbsp;</span>&nbsp;</span>
+            <span class="kb">&nbsp;<span class="kcx">&nbsp;Сх&nbsp;</span>&nbsp;</span> — це вже команда інверсії, вона записується.</li>
+      </ul>
+
+      <h3>Команда, якій потрібна ще клавіша</h3>
+      <p>Тут два різні варіанти, і вони чекають по-різному.</p>
+      <p><span class="kb">&nbsp;<span class="kop">&nbsp;Х→П&nbsp;</span>&nbsp;</span> і
+      <span class="kb">&nbsp;<span class="kop">&nbsp;П→Х&nbsp;</span>&nbsp;</span> самі в пам'ять не пишуться.
+      Калькулятор чекає одну клавішу регістра: цифру
+      <span class="kb">&nbsp;<span class="knum">&nbsp;0&nbsp;</span>&nbsp;</span>…
+      <span class="kb">&nbsp;<span class="knum">&nbsp;9&nbsp;</span>&nbsp;</span> або червону a…e
+      (крапка, <span class="kb">&nbsp;<span class="knum">&nbsp;/-/&nbsp;</span>&nbsp;</span>,
+      <span class="kb">&nbsp;<span class="knum">&nbsp;ВП&nbsp;</span>&nbsp;</span>,
+      <span class="kb">&nbsp;<span class="kcx">&nbsp;Сх&nbsp;</span>&nbsp;</span>,
+      <span class="kb">&nbsp;<span class="kop">&nbsp;В↑&nbsp;</span>&nbsp;</span>).
+      Разом це один байт. Інша клавіша чекання знімає, і в програмі нічого не з'являється.</p>
+      <p><span class="kb">&nbsp;<span class="kop">&nbsp;БП&nbsp;</span>&nbsp;</span>,
+      <span class="kb">&nbsp;<span class="kop">&nbsp;ПП&nbsp;</span>&nbsp;</span>, жовті умови
+      <span class="ffn">x&lt;0</span> <span class="ffn">x=0</span> <span class="ffn">x≥0</span> <span class="ffn">x≠0</span>
+      і цикли <span class="ffn">L0</span>…<span class="ffn">L3</span> займають два кроки.
+      Код команди лягає в поточний крок одразу, наступний крок поки що
+      <span class="vfd">00</span> — туди дописується адреса двома такими самими клавішами регістра.
+      Поки обох цифр немає, інші клавіші не пишуться: стороння клавіша лише знімає чекання.
+      Лічильник лишається на кроці з кодом переходу, тож наступна звичайна команда його замінить.
+      Якщо встигли набрати лише першу цифру адреси, вона лишається в сусідньому байті.</p>
+      <ul>
+        <li>Кроки 00…99 — дві цифри. <span class="kb">&nbsp;<span class="kop">&nbsp;БП&nbsp;</span>&nbsp;</span>
+            <span class="kb">&nbsp;<span class="knum">&nbsp;0&nbsp;</span>&nbsp;</span>
+            <span class="kb">&nbsp;<span class="knum">&nbsp;5&nbsp;</span>&nbsp;</span> — перехід на крок 05.</li>
+        <li>Кроки 100…104 на індикаторі виглядають як <span class="vfd">−0</span>…<span class="vfd">−4</span>.
+            В адресі це крапка і цифра:
+            <span class="kb">&nbsp;<span class="knum">&nbsp;.&nbsp;</span>&nbsp;</span>
+            <span class="kb">&nbsp;<span class="knum">&nbsp;0&nbsp;</span>&nbsp;</span> — крок 100,
+            <span class="kb">&nbsp;<span class="knum">&nbsp;.&nbsp;</span>&nbsp;</span>
+            <span class="kb">&nbsp;<span class="knum">&nbsp;4&nbsp;</span>&nbsp;</span> — крок 104.
+            Крапка тут не десяткова: це регістр a, старша цифра адреси.
+            Після кроку 104 лічильник знову стає на 00.</li>
+        <li><span class="kb">&nbsp;<span class="kop">&nbsp;ПП&nbsp;</span>&nbsp;</span> — виклик підпрограми.
+            У стек повернень кладеться адреса, звідки продовжити (таких адрес до п'яти).
+            Команда <span class="kb">&nbsp;<span class="kop">&nbsp;В/О&nbsp;</span>&nbsp;</span> у програмі знімає верхню.
+            Якщо стек порожній, <span class="kb">&nbsp;<span class="kop">&nbsp;В/О&nbsp;</span>&nbsp;</span> ставить лічильник на 00.
+            Шоста вкладена <span class="kb">&nbsp;<span class="kop">&nbsp;ПП&nbsp;</span>&nbsp;</span> дає <span class="vfd">ЕГГОГ</span>.</li>
+        <li>Цикл <span class="ffn">L0</span>…<span class="ffn">L3</span> зменшує цілу частину R0…R3 на одиницю,
+            дріб лишається, і стрибає, доки нова ціла частина не нуль.
+            Якщо в лічильнику вже стоїть нуль, він стає −1, і стрибок усе одно є.
+            Умови <span class="ffn">x&lt;0</span>, <span class="ffn">x=0</span>, <span class="ffn">x≥0</span>, <span class="ffn">x≠0</span>
+            влаштовані навпаки від назви: істинна умова йде на наступну команду, хибна стрибає.
+            Таблиця — у розділі 6.</li>
+        <li>Ті самі команди з префіксом <span class="kb">&nbsp;<span class="kk">&nbsp;К&nbsp;</span>&nbsp;</span> займають один крок
+            і теж чекають одну клавішу регістра, нічого не записуючи, доки її немає.
+            Далі номер береться з модуля цілої частини цього регістра.
+            <span class="kb">&nbsp;<span class="kk">&nbsp;К&nbsp;</span>&nbsp;</span>
+            <span class="kb">&nbsp;<span class="kop">&nbsp;П→Х&nbsp;</span>&nbsp;</span>
+            <span class="kb">&nbsp;<span class="knum">&nbsp;5&nbsp;</span>&nbsp;</span> читає регістр, чий номер лежить у R5.
+            <span class="kb">&nbsp;<span class="kk">&nbsp;К&nbsp;</span>&nbsp;</span>
+            <span class="kb">&nbsp;<span class="kop">&nbsp;БП&nbsp;</span>&nbsp;</span>
+            <span class="kb">&nbsp;<span class="knum">&nbsp;5&nbsp;</span>&nbsp;</span> переходить на адресу з R5.
+            Перед читанням R0…R3 ця ціла частина зменшується на 1, R4…R6 збільшується на 1,
+            R7…RE лишаються як були.</li>
+      </ul>
+
+      <h3>Приклад із корпуса</h3>
+      <p>Подвоїти число, яке перед пуском стоїть в X, і зупинитись. Увімкніть ПРГ, стрілками дійдіть до
+      <span class="vfd">00</span> і натисніть:</p>
+      <p><span class="kb">&nbsp;<span class="kop">&nbsp;Х→П&nbsp;</span>&nbsp;</span>
+      <span class="kb">&nbsp;<span class="knum">&nbsp;0&nbsp;</span>&nbsp;</span>
+      <span class="kb">&nbsp;<span class="kop">&nbsp;П→Х&nbsp;</span>&nbsp;</span>
+      <span class="kb">&nbsp;<span class="knum">&nbsp;0&nbsp;</span>&nbsp;</span>
+      <span class="kb">&nbsp;<span class="kop">&nbsp;+&nbsp;</span>&nbsp;</span>
+      <span class="kb">&nbsp;<span class="kop">&nbsp;С/П&nbsp;</span>&nbsp;</span></p>
+      <p>Це чотири команди: записати X у R0, прочитати R0 назад (стек піднімається, тож старе X лишається в Y),
+      додати, зупинитись. Лічильник після запису стоїть уже за програмою.
+      Увімкніть АВТ, наберіть <span class="kb">&nbsp;<span class="knum">&nbsp;7&nbsp;</span>&nbsp;</span>,
+      <span class="kb">&nbsp;<span class="kop">&nbsp;В/О&nbsp;</span>&nbsp;</span>, потім
+      <span class="kb">&nbsp;<span class="kop">&nbsp;С/П&nbsp;</span>&nbsp;</span>. На індикаторі 14.
+      Якщо перед пуском не повернути лічильник на 00, <span class="kb">&nbsp;<span class="kop">&nbsp;С/П&nbsp;</span>&nbsp;</span>
+      піде з того кроку, де ви зупинились у ПРГ, і далі натрапить на порожні <span class="vfd">00</span>.</p>
+      <p>Той самий текст можна набрати у вкладці «Редактор програм» і натиснути «Записати в МК-61».
+      Запис із редактора замінює всі 105 кроків і ставить лічильник на 00. Три способи тексту:</p>
+      <ul>
+        <li>Мнемоніки, по команді на рядок. Мітку пишуть із двокрапкою, перехід на неї — тим самим словом:
+            <span class="vfd">loop:</span> і далі <span class="vfd">F L0 loop</span>.</li>
+        <li>Таблиця 10×10, як у паперових роздруківках. Кнопка «Таблиця 10×10» вивантажує в редактор те, що зараз у пам'яті.
+            «Лістинг» вивантажує мнемоніки.</li>
+        <li>Коди. Два знаки, які читаються як шістнадцяткове число, — це один байт: <span class="vfd">50</span> це
+            <span class="kb">&nbsp;<span class="kop">&nbsp;С/П&nbsp;</span>&nbsp;</span>, <span class="vfd">90</span> — одна команда,
+            не цифри 9 і 0. Дев'яносто як дві цифри пишіть окремо: <span class="vfd">9 0</span>.</li>
+      </ul>
+      <p>Поки курсор у тексті редактора, літери і цифри комп'ютера потрапляють у текст.
+      Клацніть корпус, і клавіатура знову тисне кнопки МК-61. F5, F9, F10 і F12 працюють і з редактора.
+      <b>F12</b> або «Тільки МК-61» ховає бічну панель. Кнопка «Про» біля рядка режиму — версія, час збірки і ліцензія.</p>
+      <p>Далі — індикатор, стек, функції і коди. Умовний перехід розписаний у розділі 6.</p>
 
       <h2>1. Загальні відомості, індикатор та перемикачі</h2>
       <ul>
@@ -2039,8 +2204,8 @@ private:
       <h2>5. Регістри пам'яті (R0..R9, RA..RE)</h2>
       <p>Калькулятор має <b>15 незалежних адресних регістрів пам'яті</b>: десять цифрових
       (<span class="reg">R0</span>..<span class="reg">R9</span>) та п'ять буквених
-      (<span class="reg">RA</span>..<span class="reg">RE</span>), позначених червоними літерами під
-      нижнім рядом клавіш:</p>
+      (<span class="reg">RA</span>..<span class="reg">RE</span>), позначених червоними літерами.
+      a..d стоять під нижнім рядом, e — під <span class="kb">&nbsp;<span class="kop">&nbsp;В↑&nbsp;</span>&nbsp;</span>:</p>
       <ul>
         <li><span class="kb">&nbsp;<span class="knum">&nbsp;.&nbsp;</span>&nbsp;</span> — регістр <span class="reg">a</span> (<span class="reg">RA</span>, на ВЛІ відображається як <span class="vfd">-</span>);</li>
         <li><span class="kb">&nbsp;<span class="knum">&nbsp;/-/&nbsp;</span>&nbsp;</span> — регістр <span class="reg">b</span> (<span class="reg">RB</span>, на ВЛІ <span class="vfd">L</span>);</li>
@@ -2191,7 +2356,7 @@ private:
           <td><span class="vfd">20</span> – <span class="vfd">25</span></td>
           <td><span class="ffn">π</span>, <span class="ffn">√</span>, <span class="ffn">x²</span>, <span class="ffn">1/x</span>, <span class="ffn">xʸ</span>, <span class="ffn">В↻</span></td>
           <td>1</td>
-          <td>Константа π, корінь, квадрат, 1/x, степінь Y<sup>X</sup>, кільцевий зсув стека</td>
+          <td>Константа π, корінь, квадрат, 1/x, степінь xʸ (основа в X, показник у Y), кільцевий зсув стека</td>
         </tr>
         <tr>
           <td><span class="vfd">26</span>, <span class="vfd">2A</span>, <span class="vfd">30</span>, <span class="vfd">33</span></td>
@@ -2239,7 +2404,7 @@ private:
           <td><span class="vfd">58</span>, <span class="vfd">5A</span>, <span class="vfd">5B</span>, <span class="vfd">5D</span></td>
           <td><span class="ffn">F L2</span>, <span class="ffn">F L3</span>, <span class="ffn">F L1</span>, <span class="ffn">F L0</span> + <code>XX</code></td>
           <td>2</td>
-          <td>Цикли з декрементом регістрів <span class="reg">R2</span>, <span class="reg">R3</span>, <span class="reg">R1</span>, <span class="reg">R0</span> (стрибок на <code>XX</code>, доки R &gt; 0)</td>
+          <td>Цикли L2, L3, L1, L0: ціла частина R2, R3, R1, R0 мінус 1. Стрибок, доки вона не нуль. Нуль стає −1, і стрибок лишається.</td>
         </tr>
         <tr>
           <td><span class="vfd">60</span> – <span class="vfd">6E</span></td>
