@@ -36,7 +36,7 @@ ctest --preset dev
 `scripts/package.sh` builds a `.deb` and a `.tar.gz` (and an AppImage when `linuxdeploy` is installed). It picks up `~/Qt/<version>/gcc_64` on its own; otherwise set `CMAKE_PREFIX_PATH`. Artifacts land in `dist/`. The text to paste into a GitHub Release is in `packaging/GITHUB_RELEASE_v1.0.0.md`.
 
 ```bash
-sudo apt install ./mk61emu_1.0.2_amd64.deb
+sudo apt install ./dist/mk61emu_*_amd64.deb
 ```
 
 ## Console

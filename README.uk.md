@@ -38,10 +38,10 @@ ctest --preset dev
 `scripts/package.sh` збирає `.deb` і `.tar.gz`. Якщо в системі є `linuxdeploy`, додасть ще AppImage. Qt з каталогу `~/Qt/<версія>/gcc_64` скрипт знаходить сам; інакше задайте `CMAKE_PREFIX_PATH`. Файли лягають у `dist/`. Текст для GitHub Release — у `packaging/GITHUB_RELEASE_v1.0.0.md`.
 
 ```bash
-sudo apt install ./mk61emu_1.0.2_amd64.deb
+sudo apt install ./dist/mk61emu_*_amd64.deb
 ```
 
-Архів `mk61emu-1.0.2-Linux.tar.gz` розпаковується в каталог із `bin/`, `lib/` і `share/`. Запуск: `bin/mk61emu-gui` і `bin/mk61emu`. Qt уже лежить у `lib/`, системний пакет Qt не потрібен.
+Архів `dist/mk61emu-*-Linux.tar.gz` розпаковується в каталог із `bin/`, `lib/` і `share/`. Запуск: `bin/mk61emu-gui` і `bin/mk61emu`. Qt уже лежить у `lib/`, системний пакет Qt не потрібен.
 
 ## Консоль
 
